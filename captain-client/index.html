@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { 
+            margin: 0; 
+            padding: 0; 
+            width: 100vw; 
+            height: 100vh; 
+            overflow: hidden; 
+            font-family: sans-serif; 
+            background: transparent; 
+        }
+        #hud-container { 
+            position: absolute; 
+            top: 8%; 
+            left: 50%; 
+            transform: translateX(-50%); 
+            background: rgba(0, 10, 20, 0.75); 
+            border: 1px solid #00f0ff; 
+            border-radius: 8px; 
+            padding: 15px 30px; 
+            color: #00f0ff; 
+            text-align: center; 
+            box-shadow: 0 0 15px rgba(0, 240, 255, 0.3); 
+            min-width: 320px; 
+        }
+        .vector-indicator { 
+            font-size: 22px; 
+            font-weight: bold; 
+            text-transform: uppercase; 
+            margin-top: 5px; 
+            color: #fff; 
+        }
+        .coordinate-matrix {
+            margin-top: 8px;
+            font-family: monospace;
+            font-size: 13px;
+            color: #888;
+            border-top: 1px solid rgba(0, 240, 255, 0.2);
+            padding-top: 6px;
+        }
+        .active { 
+            color: #ff0055; 
+            text-shadow: 0 0 10px #ff0055; 
+        }
+    </style>
+</head>
+<body>
+    <div id="hud-container">
+        <div style="font-size: 10px; letter-spacing: 2px;">COMMANDER FLEET VECTOR</div>
+        <div id="vector-display" class="vector-indicator">STEADY AHEAD</div>
+        
+        <!-- Added for 3D Target Matrix Tracking -->
+        <div id="matrix-display" class="coordinate-matrix">TARGET NODE ASSIGNMENT: UNLINKED</div>
+    </div>
+    <script>
+        // Set to "127.0.0.1" for single-computer tests, or use the Commander's Tailscale IP
+        const COMMANDER_TAILSCALE_IP = "127.0.0.1";
+        
+        // Define this specific client instance's callsign identifier name
+        const MY_CALLSIGN = "Hammer-1"; 
+
+        const ws = new WebSocket("ws://" + COMMANDER_TAILSCALE_IP + ":8081");
+        const vectorDisplay = document.getElementById('vector-display');
+        const matrixDisplay = document.getElementById('matrix-display');
+
+        // Phase 2 Handshake: Register identity with the backend immediately
+        ws.onopen = () => {
+            ws.send(JSON.stringify({
+                "type": "INITIALIZE_CAPTAIN",
+                "callsign": MY_CALLSIGN
+            }));
+        };
+
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            
+            // 1) Handle Real-Time Flight Vector Streams
+            if (data.type === "STATE_UPDATE" || data.type === "SYNC_ALL") {
+                const vectors = data.vectors || data.state;
+                if (vectors) {
+                    let actions = [];
+                    if (vectors.yaw !== "NEUTRAL") actions.push("STEERING " + vectors.yaw);
+                    if (vectors.pitch !== "NEUTRAL") actions.push("PITCHING " + vectors.pitch);
+                    if (vectors.roll !== "NEUTRAL") actions.push(vectors.roll.replace('_', ' '));
+                    if (vectors.vertical && vectors.vertical !== "NEUTRAL") actions.push(vectors.vertical.replace('_', ' '));
+                    
+                    if (actions.length > 0) { 
+                        vectorDisplay.innerText = actions.join(' | '); 
+                        vectorDisplay.classList.add('active'); 
+                    } else { 
+                        vectorDisplay.innerText = "STEADY AHEAD"; 
+                        vectorDisplay.classList.remove('active'); 
+                    }
+                }
+            }
+
+            // 2) Handle Live 3D Target Matrix Coordinate Shift Packets
+            if (data.type === "FORMATION_SHIFT" || data.type === "SYNC_ALL") {
+                const assignments = data.assignments;
+                if (assignments && assignments[MY_CALLSIGN]) {
+                    const myTarget = assignments[MY_CALLSIGN];
+                    matrixDisplay.innerHTML = "ASSIGNED POS: <span style='color: #00f0ff;'>X: " + myTarget.x + " | Y: " + myTarget.y + " | Z: " + myTarget.z + "</span>";
+                }
+            }
+        };
+
+        ws.onerror = () => { 
+            vectorDisplay.innerText = "DISCONNECTED FROM MESH"; 
+            vectorDisplay.style.color = "#ff0055"; 
+            matrixDisplay.innerText = "TARGET NODE ASSIGNMENT: UNLINKED";
+        };
+    </script>
+</body>
+</html>
