@@ -2,23 +2,25 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Fleet Commander - 3D Voxel Board</title>
+    <title>Fleet Commander - 3D Tactical Board</title>
     <style>
         :root {
             --bg-color: #01060f; --hud-color: #00f0ff;
             --lead-color: #ff0055; --escort-color: #00ff66;
             --grid-color: rgba(0, 240, 255, 0.04); --panel-bg: rgba(2, 12, 30, 0.95);
         }
+        * { box-sizing: border-box; }
         body {
             margin: 0; padding: 0; background-color: var(--bg-color);
             color: var(--hud-color); font-family: 'Courier New', Courier, monospace;
             overflow: hidden; display: flex;
         }
         #control-panel {
-            position: absolute; top: 15px; left: 15px; width: 280px;
+            position: absolute; top: 15px; left: 15px; width: 290px;
             background: var(--panel-bg); padding: 15px;
             border: 1px solid var(--hud-color); border-radius: 4px;
             box-shadow: 0 0 15px rgba(0, 240, 255, 0.3); z-index: 100;
+            max-height: calc(100vh - 30px); overflow-y: auto;
         }
         h2 { margin: 0 0 10px 0; font-size: 13px; color: var(--lead-color); letter-spacing: 1px; }
         .stat { font-size: 11px; margin: 5px 0; color: #fff; }
@@ -30,19 +32,52 @@
             text-transform: uppercase; border-radius: 2px;
         }
         button:hover { background: var(--hud-color); color: var(--bg-color); font-weight: bold; }
+        button.danger { border-color: #ff0055; color: #ff0055; }
+        button.danger:hover { background: #ff0055; color: #000; }
+        button.warn { border-color: #ffaa00; color: #ffaa00; }
+        button.warn:hover { background: #ffaa00; color: #000; }
         .save-box { display: flex; gap: 4px; margin-top: 5px; }
         input[type="text"], select, input[type="color"] {
             background: #010b18; border: 1px solid rgba(0, 240, 255, 0.4);
-            color: #fff; padding: 3px; font-family: monospace; font-size: 10px; width: 100%; box-sizing: border-box;
+            color: #fff; padding: 3px; font-family: monospace; font-size: 10px;
+            width: 100%;
         }
         .color-row { display: flex; justify-content: space-between; align-items: center; margin: 4px 0; font-size: 10px; }
         #viewport-wrapper { display: flex; width: 100vw; height: 100vh; position: relative; }
         #canvas-3d { width: 100% !important; height: 100% !important; display: block; position: absolute; top: 0; left: 0; z-index: 1; }
+
+        /* Camera angle overlay at bottom of 3D view */
+        #cam-readout {
+            position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
+            background: rgba(1, 6, 15, 0.75); border: 1px solid rgba(0,240,255,0.25);
+            border-radius: 4px; padding: 5px 18px; font-size: 11px; font-family: monospace;
+            color: #888; z-index: 10; pointer-events: none; letter-spacing: 1px;
+        }
+        #cam-readout span { color: var(--hud-color); }
+
+        /* Zoom scale bar */
+        #scale-bar {
+            position: absolute; bottom: 44px; right: 20px;
+            z-index: 10; pointer-events: none;
+            display: flex; flex-direction: column; align-items: flex-end; gap: 2px;
+        }
+        #scale-label { font-size: 10px; font-family: monospace; color: #888; }
+        #scale-line {
+            height: 4px; border: 1px solid var(--hud-color);
+            border-top: none; min-width: 60px;
+        }
+
         #mini-maps-sidebar {
             position: absolute; top: 15px; right: 15px; display: flex;
             flex-direction: column; gap: 10px; z-index: 50; pointer-events: none;
-            max-height: 98vh; overflow-y: auto; padding-right: 5px;
+            max-height: calc(100vh - 30px); overflow-y: auto; padding-right: 5px;
+            /* hide scrollbar visually but keep scroll functionality */
+            scrollbar-width: thin; scrollbar-color: rgba(0,240,255,0.2) transparent;
         }
+        #mini-maps-sidebar::-webkit-scrollbar { width: 4px; }
+        #mini-maps-sidebar::-webkit-scrollbar-track { background: transparent; }
+        #mini-maps-sidebar::-webkit-scrollbar-thumb { background: rgba(0,240,255,0.2); border-radius: 2px; }
+
         .mini-outer { display: flex; flex-direction: column; align-items: center; pointer-events: auto; }
         .mini-title { font-size: 10px; font-weight: bold; color: var(--lead-color); margin-bottom: 2px; }
         .mini-grid-container {
@@ -51,548 +86,1314 @@
         }
         .label-text { font-size: 9px; color: #888; font-weight: bold; width: 32px; text-align: center; }
         .mini-canvas { background: #020914; display: block; width: 150px; height: 100px; border-radius: 2px; }
-        .cam-btn-grid { display: grid; grid-template-columns: 1fr; gap: 4px; margin-top: 5px; width: 150px; }
+
+        /* Captain roster — inline below mini-maps inside the sidebar */
+        #captain-roster {
+            pointer-events: auto;
+            background: var(--panel-bg);
+            border: 1px solid rgba(0,240,255,0.3);
+            border-radius: 4px;
+            padding: 8px 10px;
+            width: 100%;
+            font-size: 10px;
+            font-family: 'Courier New', monospace;
+        }
+        .roster-header {
+            font-size: 9px; letter-spacing: 2px; color: var(--lead-color);
+            font-weight: bold; margin-bottom: 6px;
+            border-bottom: 1px solid rgba(0,240,255,0.15); padding-bottom: 4px;
+        }
+        .captain-row {
+            display: flex; align-items: center; gap: 6px;
+            padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .captain-row:last-child { border-bottom: none; }
+        .captain-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+        .captain-name { flex: 1; color: #fff; font-size: 10px; }
+        .captain-ship { color: #555; font-size: 8px; }
+        .captain-online  { color: #00ff66; font-size: 8px; }
+        .captain-offline { color: #333;    font-size: 8px; }
+
+        /* Ship editor */
+        #ship-editor {
+            display: none; border: 1px dashed var(--hud-color);
+            padding: 8px; border-radius: 4px; margin-top: 8px;
+        }
+        /* Formation row with delete */
+        .formation-row { display: flex; gap: 4px; }
+        .formation-row button:first-child { flex: 1; }
+        .btn-del-formation { padding: 4px 6px; font-size: 10px; flex-shrink: 0; }
+
+        /* Add ship form */
+        #add-ship-form { margin-top: 6px; display: flex; flex-direction: column; gap: 4px; }
+        .form-row { display: flex; gap: 4px; align-items: center; }
+        .form-row label { font-size: 9px; color: #888; width: 55px; flex-shrink: 0; }
+        .form-row input, .form-row select { flex: 1; }
+
+        /* ── Config modal ── */
+        #config-modal {
+            position: fixed; inset: 0; z-index: 500;
+            background: rgba(0,0,0,0.65);
+            align-items: center; justify-content: center;
+        }
+        #config-box {
+            background: rgba(2,12,30,0.98);
+            border: 1px solid var(--hud-color);
+            border-radius: 6px; width: 440px; max-height: 82vh;
+            display: flex; flex-direction: column;
+            box-shadow: 0 0 30px rgba(0,240,255,0.2);
+            font-family: 'Courier New', monospace;
+        }
+        .cfg-tab-btn {
+            flex: 1; background: transparent; border: none;
+            border-bottom: 2px solid transparent;
+            color: #555; padding: 8px 4px;
+            font-family: monospace; font-size: 10px;
+            letter-spacing: 1px; cursor: pointer; text-transform: uppercase;
+        }
+        .cfg-tab-btn:hover { color: var(--hud-color); }
+        .cfg-tab-btn.active { color: var(--hud-color); border-bottom-color: var(--hud-color); }
+        .cfg-field-row { display: flex; gap: 4px; align-items: center; margin: 4px 0; }
+        .cfg-field-row label { font-size: 9px; color: #888; width: 80px; flex-shrink: 0; letter-spacing: 1px; }
+        .cfg-field-row input, .cfg-field-row select { flex: 1; }
+
+        /* ── Layout Mode ── */
+        body.layout-mode .layout-panel {
+            outline: 2px dashed rgba(204,170,255,0.55) !important;
+            cursor: move;
+        }
+        body.layout-mode .layout-panel * { cursor: default; }
+        body.layout-mode .layout-panel button,
+        body.layout-mode .layout-panel input,
+        body.layout-mode .layout-panel select { cursor: pointer; }
+        .resize-handle {
+            display: none;
+            position: absolute; bottom: 0; right: 0;
+            width: 18px; height: 18px; cursor: se-resize; z-index: 402;
+            background: linear-gradient(135deg, transparent 38%, rgba(204,170,255,0.55) 38%);
+        }
+        body.layout-mode .resize-handle { display: block; }
     </style>
 </head>
 <body>
 
-    <div id="control-panel">
-        <h2>3D TACTICAL BOARD</h2>
-        <div class="stat">ARRANGEMENT: <span id="ui-formation" style="color:var(--hud-color);">LOADING...</span></div>
-        <div class="stat">SHIPS LINKED: <span id="ui-count">0</span></div>
-        
-        <div class="panel-section" id="ship-editor" style="display:none; border: 1px dashed var(--hud-color); padding: 8px; border-radius:4px;">
-            <div class="stat" style="color:var(--lead-color); font-weight:bold; margin-top:0;">EDIT SHIP: <span id="edit-callsign"></span></div>
-            <div style="margin: 4px 0;"><span class="stat">HULL NAME:</span><input type="text" id="edit-name"></div>
-            <div style="margin: 4px 0;"><span class="stat">SIZE CLASS:</span>
-                <select id="edit-size"><option value="SMALL">SMALL (10m Box)</option><option value="MEDIUM">MEDIUM (30m Box)</option><option value="LARGE">LARGE (50m Box)</option></select>
-            </div>
-            <div style="margin: 4px 0;"><span class="stat">WIRE SHAPE:</span>
-                <select id="edit-shape"><option value="BOX">BLOCK VOXEL</option><option value="WEDGE">CAPITAL WEDGE</option><option value="ARROW">FIGHTER SHAPE</option></select>
-            </div>
-            <button style="width:100%; margin-top:4px;" onclick="saveSelectedShipConfig()">UPDATE REGISTRY</button>
-        </div>
+<div id="control-panel">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <span style="font-size:13px;color:var(--lead-color);letter-spacing:1px;font-weight:bold;">3D TACTICAL BOARD</span>
+        <button onclick="openConfig()" title="Fleet Configuration" style="padding:3px 9px;font-size:13px;line-height:1;">⚙</button>
+    </div>
+    <div class="stat">FORMATION: <span id="ui-formation" style="color:var(--hud-color);">LOADING...</span></div>
+    <div class="stat">SHIPS TRACKED: <span id="ui-count">0</span></div>
 
-        <div class="panel-section">
-            <div class="stat" style="color: var(--lead-color); font-weight: bold;">PRESETS:</div>
-            <div id="formation-buttons" class="btn-container"></div>
+    <!-- Ship editor (shown on click) -->
+    <div id="ship-editor">
+        <div class="stat" style="color:var(--lead-color); font-weight:bold; margin-top:0;">EDIT: <span id="edit-callsign"></span></div>
+        <div style="margin:4px 0;"><span class="stat">HULL NAME:</span><input type="text" id="edit-name"></div>
+        <div style="margin:4px 0;"><span class="stat">SIZE CLASS:</span>
+            <select id="edit-size">
+                <option value="SMALL">SMALL</option>
+                <option value="MEDIUM">MEDIUM</option>
+                <option value="LARGE">LARGE</option>
+            </select>
         </div>
-
-        <div class="panel-section">
-            <div class="stat" style="color: var(--lead-color); font-weight: bold;">SAVE MATRIX:</div>
-            <div class="save-box">
-                <input type="text" id="custom-name-input" placeholder="MATRIX_TAG" value="Alpha-3D-Matrix">
-                <button onclick="commitCustomFormation()">SAVE</button>
-            </div>
+        <div style="margin:4px 0;"><span class="stat">WIRE SHAPE:</span>
+            <select id="edit-shape">
+                <option value="BOX">BLOCK VOXEL</option>
+                <option value="WEDGE">CAPITAL WEDGE</option>
+                <option value="ARROW">FIGHTER SHAPE</option>
+            </select>
         </div>
+        <div style="margin:4px 0; display:flex; align-items:center; gap:6px;">
+            <span class="stat">TOKEN COLOR:</span>
+            <input type="color" id="edit-color" style="width:40px; height:22px; padding:1px;">
+        </div>
+        <div style="display:flex; gap:4px; margin-top:6px;">
+            <button style="flex:1" onclick="saveSelectedShipConfig()">UPDATE</button>
+            <button class="danger" style="flex:1" onclick="removeShip(editingCallsign)">REMOVE</button>
+        </div>
+        <button class="warn" style="width:100%; margin-top:4px;" onclick="kickCaptain(editingCallsign)">KICK CAPTAIN</button>
+    </div>
 
-        <div class="panel-section">
-            <div class="stat" style="color: var(--lead-color); font-weight: bold;">COLOR SPECS CONFIG:</div>
-            <div class="color-row"><span>HUD Interface:</span><input type="color" id="cfg-hud" value="#00f0ff" onchange="updateThemeStyle()"></div>
-            <div class="color-row"><span>Lead Capital:</span><input type="color" id="cfg-lead" value="#ff0055" onchange="updateThemeStyle()"></div>
-            <div class="color-row"><span>Escort Fleet:</span><input type="color" id="cfg-escort" value="#00ff66" onchange="updateThemeStyle()"></div>
-            <div class="color-row"><span>Radar Grid:</span><input type="color" id="cfg-grid" value="#1a3d54" onchange="updateThemeStyle()"></div>
-            <div class="color-row"><span>Background:</span><input type="color" id="cfg-bg" value="#01060f" onchange="updateThemeStyle()"></div>
+    <!-- Formation presets -->
+    <div class="panel-section">
+        <div class="stat" style="color:var(--lead-color); font-weight:bold;">PRESETS:</div>
+        <div id="formation-buttons" class="btn-container"></div>
+    </div>
+
+    <!-- Issue Formation Order -->
+    <div class="panel-section">
+        <div class="stat" style="color:var(--lead-color); font-weight:bold;">ISSUE ORDER:</div>
+        <select id="order-target-select" style="width:100%; margin:4px 0 5px;"></select>
+        <button onclick="issueFormationOrder()" style="width:100%; background:#1a0010; border-color:#ff0055; color:#ff0055; font-weight:bold; padding:7px; font-size:11px;">▶ ISSUE FORMATION ORDER</button>
+    </div>
+
+    <!-- Save / delete formation -->
+    <div class="panel-section">
+        <div class="stat" style="color:var(--lead-color); font-weight:bold;">SAVE MATRIX:</div>
+        <div class="save-box">
+            <input type="text" id="custom-name-input" placeholder="MATRIX_TAG" value="Alpha-3D-Matrix">
+            <button onclick="commitCustomFormation()">SAVE</button>
         </div>
     </div>
 
-    <div id="viewport-wrapper">
-        <canvas id="canvas-3d"></canvas>
-
-         <div id="mini-maps-sidebar">
-            <!-- 1) DECK VIEW (X / Y) -->
-            <div class="mini-outer">
-                <button class="mini-title" onclick="snapCameraAngle(0.0, -1.57)">DECK VIEW (X / Y)</button>
-                <div class="mini-grid-container">
-                    <div></div><div class="label-text">FORE</div><div></div>
-                    <div class="label-text">PORT</div><canvas id="map-xy" class="mini-canvas" width="150" height="100"></canvas><div class="label-text">STBD</div>
-                    <div></div><div class="label-text">AFT</div><div></div>
-                </div>
-            </div>
-
-            <!-- 2) AFT VIEW (X / Z) -->
-            <div class="mini-outer">
-                <button class="mini-title" onclick="snapCameraAngle(0.0, 0.0)">AFT VIEW (X / Z)</button>
-                <div class="mini-grid-container">
-                    <div></div><div class="label-text">DECK</div><div></div>
-                    <div class="label-text">PORT</div><canvas id="map-xz" class="mini-canvas" width="150" height="100"></canvas><div class="label-text">STBD</div>
-                    <div></div><div class="label-text">KEEL</div><div></div>
-                </div>
-            </div>
-
-            <!-- 3) STBD VIEW (Y / Z) -->
-            <div class="mini-outer">
-                <button class="mini-title" onclick="snapCameraAngle(-1.57, 0.0)">STBD VIEW (Y / Z)</button>
-                <div class="mini-grid-container">
-                    <div></div><div class="label-text">DECK</div><div></div>
-                    <div class="label-text">FORE</div><canvas id="map-yz" class="mini-canvas" width="150" height="100"></canvas><div class="label-text">AFT</div>
-                    <div></div><div class="label-text">KEEL</div><div></div>
-                </div>
-            </div>
-
-            <!-- 4) CAMERA TRACTOR CONSOLE -->
-            <div class="mini-outer">
-                <div class="mini-title" style="pointer-events:none;">3D CAM CONSOLE</div>
-                <div class="mini-grid-container" style="display:flex; flex-direction:column; padding:4px;">
-                    <canvas id="map-cam" class="mini-canvas" width="150" height="30"></canvas>
-                </div>
-            </div>
+    <!-- Add ship -->
+    <div class="panel-section">
+        <div class="stat" style="color:var(--lead-color); font-weight:bold;">ADD SHIP SLOT:</div>
+        <div id="add-ship-form">
+            <div class="form-row"><label>CALLSIGN</label><input type="text" id="new-callsign" placeholder="Hammer-3"></div>
+            <div class="form-row"><label>SHIP</label><input type="text" id="new-ship" placeholder="Hammerhead"></div>
+            <div class="form-row"><label>SLOT</label><input type="text" id="new-slot" placeholder="Escort"></div>
+            <button onclick="addShip()">+ ADD TO FORMATION</button>
         </div>
     </div>
-    <script>
-        const ws = new WebSocket("ws://" + window.location.hostname + ":8081");
-        
-        const canvas3D = document.getElementById('canvas-3d');
-        const ctx3D = canvas3D.getContext('2d');
-        
-        const mXY = document.getElementById('map-xy'); const ctxXY = mXY.getContext('2d');
-        const mYZ = document.getElementById('map-yz'); const ctxYZ = mYZ.getContext('2d');
-        const mXZ = document.getElementById('map-xz'); const ctxXZ = mXZ.getContext('2d');
-        const mCam = document.getElementById('map-cam'); const ctxCam = mCam.getContext('2d');
 
-        let fleetAssignments = {};
-        let targetAssignments = {};
-        let activeFormation = "N/A";
-        let selectedToken = null;
-        let activeAxisMode = null;
-        let editingCallsign = null;
+</div>
 
-        // Matches requested default looks: Yaw = 0.10, Pitch = -0.10
-        let camYaw = 0.10; 
-        let camPitch = -0.10;
-        let isDraggingCam = false;
-        let lastMousePos = { x: 0, y: 0 };
 
-        const ORTHO_SCALE = 0.5;
+<div id="viewport-wrapper">
+    <canvas id="canvas-3d"></canvas>
 
-        function updateThemeStyle() {
-            const r = document.documentElement.style;
-            const hudVal = document.getElementById('cfg-hud').value;
-            const leadVal = document.getElementById('cfg-lead').value;
-            const escortVal = document.getElementById('cfg-escort').value;
-            const gridHex = document.getElementById('cfg-grid').value;
-            const bgVal = document.getElementById('cfg-bg').value;
+    <!-- Camera angle readout -->
+    <div id="cam-readout">
+        YAW <span id="cam-yaw-deg">6°</span> &nbsp;|&nbsp; PITCH <span id="cam-pitch-deg">-6°</span>
+        &nbsp;&nbsp; SCROLL TO ZOOM
+    </div>
 
-            r.setProperty('--hud-color', hudVal);
-            r.setProperty('--lead-color', leadVal);
-            r.setProperty('--escort-color', escortVal);
-            r.setProperty('--bg-color', bgVal);
-            
-            const bigInt = parseInt(gridHex.slice(1), 16);
-            const rVal = (bigInt >> 16) & 255; const gVal = (bigInt >> 8) & 255; const bVal = bigInt & 255;
-            r.setProperty('--grid-color', "rgba(" + rVal + "," + gVal + "," + bVal + ", 0.08)");
+    <!-- Scale bar -->
+    <div id="scale-bar">
+        <div id="scale-label">--- m</div>
+        <div id="scale-line"></div>
+    </div>
 
-            ws.send(JSON.stringify({
-                type: "SAVE_THEME_CONFIG",
-                colors: { hud: hudVal, lead: leadVal, escort: escortVal, grid: gridHex, bg: bgVal }
-            }));
+    <!-- Mini maps -->
+    <div id="mini-maps-sidebar">
+        <div class="mini-outer">
+            <button class="mini-title" onclick="snapCameraAngle(0.0, -1.5708)">DECK VIEW (X / Y)</button>
+            <div class="mini-grid-container">
+                <div></div><div class="label-text">FORE</div><div></div>
+                <div class="label-text">PORT</div><canvas id="map-xy" class="mini-canvas" width="150" height="100"></canvas><div class="label-text">STBD</div>
+                <div></div><div class="label-text">AFT</div><div></div>
+            </div>
+        </div>
+        <div class="mini-outer">
+            <button class="mini-title" onclick="snapCameraAngle(0.0, 0.0)">AFT VIEW (X / Z)</button>
+            <div class="mini-grid-container">
+                <div></div><div class="label-text">DECK</div><div></div>
+                <div class="label-text">PORT</div><canvas id="map-xz" class="mini-canvas" width="150" height="100"></canvas><div class="label-text">STBD</div>
+                <div></div><div class="label-text">KEEL</div><div></div>
+            </div>
+        </div>
+        <div class="mini-outer">
+            <button class="mini-title" onclick="snapCameraAngle(-1.5708, 0.0)">STBD VIEW (Y / Z)</button>
+            <div class="mini-grid-container">
+                <div></div><div class="label-text">DECK</div><div></div>
+                <div class="label-text">FORE</div><canvas id="map-yz" class="mini-canvas" width="150" height="100"></canvas><div class="label-text">AFT</div>
+                <div></div><div class="label-text">KEEL</div><div></div>
+            </div>
+        </div>
+
+        <!-- Captain roster — lives below mini-maps, scrolls with the sidebar -->
+        <div id="captain-roster">
+            <div class="roster-header">CAPTAIN ROSTER</div>
+            <div id="roster-list"><span style="color:#444; font-size:9px;">NO SHIPS IN FORMATION</span></div>
+        </div>
+
+    </div>
+
+    <!-- Notification / status banner -->
+    <div id="notif-banner" style="
+        display:none; position:absolute; top:15px; left:50%; transform:translateX(-50%);
+        background:rgba(1,6,15,0.92); border:1px solid; border-radius:4px;
+        padding:8px 22px; font-size:12px; font-family:monospace; letter-spacing:1px;
+        z-index:200; pointer-events:none; white-space:nowrap;
+        box-shadow:0 0 16px rgba(0,240,255,0.15);
+    "></div>
+</div>
+
+<!-- ── GEAR / CONFIG MODAL ────────────────────────────────────────────────── -->
+<div id="config-modal" style="display:none;">
+    <div id="config-box">
+        <!-- Header -->
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid rgba(0,240,255,0.2);">
+            <span style="font-size:11px;letter-spacing:3px;color:var(--lead-color);font-weight:bold;">⚙ FLEET CONFIGURATION</span>
+            <button onclick="closeConfig()" style="padding:2px 8px;font-size:12px;">✕</button>
+        </div>
+        <!-- Tab bar -->
+        <div style="display:flex;border-bottom:1px solid rgba(0,240,255,0.15);">
+            <button class="cfg-tab-btn active" data-tab="colours" onclick="switchConfigTab('colours')">COLOURS</button>
+            <button class="cfg-tab-btn" data-tab="ships"   onclick="switchConfigTab('ships')">SHIPS</button>
+            <button class="cfg-tab-btn" data-tab="grid"    onclick="switchConfigTab('grid')">GRID</button>
+            <button class="cfg-tab-btn" data-tab="layout"  onclick="switchConfigTab('layout')">LAYOUT</button>
+        </div>
+        <!-- Tab bodies -->
+        <div style="overflow-y:auto;flex:1;padding:14px 16px;">
+
+            <!-- COLOURS -->
+            <div id="cfg-tab-colours">
+                <div class="color-row"><span>HUD:</span><input type="color" id="cfg-hud" value="#00f0ff" onchange="updateThemeStyle()"></div>
+                <div class="color-row"><span>Lead Capital:</span><input type="color" id="cfg-lead" value="#ff0055" onchange="updateThemeStyle()"></div>
+                <div class="color-row"><span>Escort Fleet:</span><input type="color" id="cfg-escort" value="#00ff66" onchange="updateThemeStyle()"></div>
+                <div class="color-row"><span>Radar Grid:</span><input type="color" id="cfg-grid" value="#1a3d54" onchange="updateThemeStyle()"></div>
+                <div class="color-row"><span>Background:</span><input type="color" id="cfg-bg" value="#01060f" onchange="updateThemeStyle()"></div>
+                <div style="margin-top:10px;display:flex;gap:5px;">
+                    <button onclick="updateThemeStyle()" style="flex:1;">APPLY &amp; SAVE</button>
+                    <button class="danger" onclick="ws.send(JSON.stringify({type:'RESET_TO_DEFAULTS'}))">RESET DEFAULTS</button>
+                </div>
+            </div>
+
+            <!-- SHIPS -->
+            <div id="cfg-tab-ships" style="display:none;">
+                <div style="font-size:9px;color:#888;letter-spacing:1px;margin-bottom:6px;">SHIP LIBRARY — custom shape / scale / colour overrides per hull</div>
+                <div id="ship-lib-list" style="margin-bottom:10px;min-height:24px;"></div>
+                <div style="border-top:1px solid rgba(0,240,255,0.15);padding-top:8px;display:flex;flex-direction:column;gap:4px;">
+                    <div class="cfg-field-row"><label>HULL NAME</label><input type="text" id="lib-new-name" placeholder="Hammerhead (AEGIS)"></div>
+                    <div class="cfg-field-row"><label>SHAPE</label>
+                        <select id="lib-new-shape">
+                            <option value="BOX">BLOCK VOXEL</option>
+                            <option value="WEDGE">CAPITAL WEDGE</option>
+                            <option value="ARROW" selected>FIGHTER SHAPE</option>
+                        </select>
+                    </div>
+                    <div class="cfg-field-row"><label>SCALE</label><input type="number" id="lib-new-scale" value="1.0" min="0.3" max="4.0" step="0.1"></div>
+                    <div class="cfg-field-row"><label>COLOUR</label><input type="color" id="lib-new-color" value="#00ff66" style="width:50px;height:22px;padding:1px;"></div>
+                    <div style="display:flex;gap:5px;margin-top:4px;">
+                        <button onclick="addShipLibEntry()" style="flex:1;">+ ADD ENTRY</button>
+                        <button onclick="saveShipLibrary()" style="flex:1;border-color:#44ff88;color:#44ff88;background:#001a0a;">SAVE LIBRARY</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- GRID -->
+            <div id="cfg-tab-grid" style="display:none;">
+                <div style="font-size:9px;color:#888;letter-spacing:1px;margin-bottom:8px;">GRID DIMENSIONS — zoom moves ship tokens, not the grid</div>
+                <div class="cfg-field-row"><label>SQUARES X</label><input type="number" id="cfg-sq-x" min="2" max="20" step="2" value="4"></div>
+                <div class="cfg-field-row"><label>SQUARES Y</label><input type="number" id="cfg-sq-y" min="2" max="20" step="2" value="4"></div>
+                <div class="cfg-field-row"><label>SQUARES Z</label><input type="number" id="cfg-sq-z" min="2" max="10" step="2" value="2"></div>
+                <div class="cfg-field-row"><label>METRES / SQ</label><input type="number" id="cfg-sq-size" min="10" max="2000" step="10" value="100"></div>
+                <div style="margin-top:8px;font-size:9px;color:#555;line-height:1.5;">Scale bar always shows 1 grid square.<br>Changes take effect immediately on save.</div>
+                <button onclick="saveGridConfig()" style="width:100%;margin-top:10px;border-color:#44ffcc;color:#44ffcc;background:#001a18;padding:6px;">SAVE GRID CONFIG</button>
+            </div>
+
+            <!-- LAYOUT -->
+            <div id="cfg-tab-layout" style="display:none;">
+                <div style="font-size:9px;color:#888;letter-spacing:1px;margin-bottom:8px;">PANEL LAYOUT — drag and resize all panels freely</div>
+                <button id="layout-mode-btn" onclick="enterLayoutMode()" style="width:100%;padding:8px;border-color:#ccaaff;color:#ccaaff;background:#0d001a;">↔ ENTER LAYOUT MODE</button>
+                <div id="layout-exit-row" style="display:none;margin-top:6px;">
+                    <button onclick="exitLayoutMode()" style="width:100%;padding:8px;border-color:#ffaa00;color:#ffaa00;background:#1a0a00;">✓ SAVE &amp; EXIT LAYOUT MODE</button>
+                </div>
+                <div style="margin-top:12px;font-size:9px;color:#444;line-height:1.6;">
+                    In layout mode all panels show dashed handles.<br>
+                    Drag to reposition · drag corner to resize.<br>
+                    Layout is persisted to server on exit.
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<script>
+const ws = new WebSocket("ws://" + window.location.hostname + ":8081");
+
+const canvas3D = document.getElementById('canvas-3d');
+const ctx3D = canvas3D.getContext('2d');
+const mXY = document.getElementById('map-xy'); const ctxXY = mXY.getContext('2d');
+const mYZ = document.getElementById('map-yz'); const ctxYZ = mYZ.getContext('2d');
+const mXZ = document.getElementById('map-xz'); const ctxXZ = mXZ.getContext('2d');
+
+let fleetAssignments = {};
+let targetAssignments = {};
+let activeFormation = "N/A";
+let selectedToken = null;
+let activeAxisMode = null;
+let editingCallsign = null;
+let onlineCaptains = [];
+let pendingOrder   = { active: false, formation: null, targets: {}, paths: {} };
+let captainStates  = {};
+let notifTimer     = null;
+let gridConfig     = { squaresX: 4, squaresY: 4, squaresZ: 2, squareSizeMeters: 100 };
+let shipLibrary    = {};
+let layoutMode     = false;
+let dragging       = null;
+let resizing       = null;
+const LAYOUT_PANELS = ['control-panel', 'mini-maps-sidebar'];
+
+let camYaw = 0.10;
+let camPitch = -0.10;
+let isDraggingCam = false;
+let lastMousePos = { x: 0, y: 0 };
+
+// Zoom state
+let zoomLevel = 1.0; // multiplier on fovScale
+const ZOOM_MIN = 0.15;
+const ZOOM_MAX = 6.0;
+const BASE_ORTHO_SCALE = 0.5;
+const ORTHO_SCALE = BASE_ORTHO_SCALE; // mini-maps stay fixed scale
+
+// ─── HELPERS ────────────────────────────────────────────────────────────────
+
+function radToDeg(r) {
+    return ((r * 180 / Math.PI) % 360 + 360) % 360;
+}
+
+function updateCamReadout() {
+    let yawDeg = radToDeg(camYaw);
+    let pitchDeg = (camPitch * 180 / Math.PI);
+    // Show pitch as signed -180..180 for clarity
+    pitchDeg = ((pitchDeg + 180) % 360 - 180);
+    document.getElementById('cam-yaw-deg').textContent = yawDeg.toFixed(1) + '°';
+    document.getElementById('cam-pitch-deg').textContent = pitchDeg.toFixed(1) + '°';
+}
+
+function updateScaleBar() {
+    // Scale bar = 1 grid square.  Grid uses fixed projection (no zoom),
+    // so bar width is also fixed: step metres × (450 / 600) px/m at depth 0.
+    const step  = gridConfig.squareSizeMeters;
+    const barPx = Math.round(step * (450 / 600));
+    document.getElementById('scale-line').style.width = barPx + 'px';
+    document.getElementById('scale-label').textContent = step + ' m';
+}
+
+// ─── THEME ───────────────────────────────────────────────────────────────────
+
+function updateThemeStyle() {
+    const r = document.documentElement.style;
+    const hudVal  = document.getElementById('cfg-hud').value;
+    const leadVal = document.getElementById('cfg-lead').value;
+    const escVal  = document.getElementById('cfg-escort').value;
+    const gridHex = document.getElementById('cfg-grid').value;
+    const bgVal   = document.getElementById('cfg-bg').value;
+
+    r.setProperty('--hud-color', hudVal);
+    r.setProperty('--lead-color', leadVal);
+    r.setProperty('--escort-color', escVal);
+    r.setProperty('--bg-color', bgVal);
+
+    const big = parseInt(gridHex.slice(1), 16);
+    const rv = (big >> 16) & 255, gv = (big >> 8) & 255, bv = big & 255;
+    r.setProperty('--grid-color', `rgba(${rv},${gv},${bv},0.08)`);
+
+    ws.send(JSON.stringify({
+        type: "SAVE_THEME_CONFIG",
+        colors: { hud: hudVal, lead: leadVal, escort: escVal, grid: gridHex, bg: bgVal }
+    }));
+}
+
+function applyColors(c) {
+    const r = document.documentElement.style;
+    document.getElementById('cfg-hud').value   = c.hud;
+    document.getElementById('cfg-lead').value  = c.lead;
+    document.getElementById('cfg-escort').value= c.escort;
+    document.getElementById('cfg-grid').value  = c.grid;
+    document.getElementById('cfg-bg').value    = c.bg;
+    r.setProperty('--hud-color', c.hud);
+    r.setProperty('--lead-color', c.lead);
+    r.setProperty('--escort-color', c.escort);
+    r.setProperty('--bg-color', c.bg);
+    const big = parseInt(c.grid.slice(1), 16);
+    const rv = (big >> 16) & 255, gv = (big >> 8) & 255, bv = big & 255;
+    r.setProperty('--grid-color', `rgba(${rv},${gv},${bv},0.08)`);
+}
+
+// ─── CAMERA ──────────────────────────────────────────────────────────────────
+
+function snapCameraAngle(yaw, pitch) { camYaw = yaw; camPitch = pitch; }
+
+// ─── FORMATION ORDER HELPERS ─────────────────────────────────────────────────
+
+function playCommanderPing() {
+    try {
+        const ac = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ac.createOscillator(), gain = ac.createGain();
+        osc.connect(gain); gain.connect(ac.destination);
+        osc.type = 'sine'; osc.frequency.value = 880;
+        gain.gain.setValueAtTime(0.3, ac.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.5);
+        osc.start(); osc.stop(ac.currentTime + 0.5);
+    } catch(e) {}
+}
+
+function showNotif(msg, color, duration) {
+    const el = document.getElementById('notif-banner');
+    el.textContent = msg;
+    el.style.borderColor = color;
+    el.style.color = color;
+    el.style.display = 'block';
+    if (notifTimer) clearTimeout(notifTimer);
+    notifTimer = duration ? setTimeout(() => { el.style.display = 'none'; }, duration) : null;
+}
+
+function issueFormationOrder() {
+    const name = document.getElementById('order-target-select').value;
+    if (!name) return;
+    ws.send(JSON.stringify({ type: "ISSUE_FORMATION_ORDER", formation: name }));
+}
+
+function bezierPoint3D(t, p0, c1, c2, p1) {
+    const u = 1 - t;
+    return [
+        u**3*p0[0] + 3*u**2*t*c1[0] + 3*u*t**2*c2[0] + t**3*p1[0],
+        u**3*p0[1] + 3*u**2*t*c1[1] + 3*u*t**2*c2[1] + t**3*p1[1],
+        u**3*p0[2] + 3*u**2*t*c1[2] + 3*u*t**2*c2[2] + t**3*p1[2],
+    ];
+}
+
+function drawBezierPaths() {
+    if (!pendingOrder.active) return;
+    const SAMPLES = 28;
+    ctx3D.save();
+    ctx3D.setLineDash([6, 4]);
+    for (const [cs, pd] of Object.entries(pendingOrder.paths)) {
+        const src = fleetAssignments[cs];
+        const tgt = pendingOrder.targets[cs];
+        if (!src || !tgt) continue;
+        const p0 = [src.x, src.y, src.z];
+        const p1 = [tgt.x, tgt.y, tgt.z];
+        ctx3D.strokeStyle = pd.color;
+        ctx3D.lineWidth = 1.5;
+        ctx3D.globalAlpha = 0.65;
+        ctx3D.beginPath();
+        for (let i = 0; i <= SAMPLES; i++) {
+            const bp = bezierPoint3D(i / SAMPLES, p0, pd.c1, pd.c2, p1);
+            const pt = project3DTo2D(bp[0], bp[1], bp[2]);
+            i === 0 ? ctx3D.moveTo(pt.x, pt.y) : ctx3D.lineTo(pt.x, pt.y);
+        }
+        ctx3D.stroke();
+    }
+    ctx3D.setLineDash([]);
+    ctx3D.globalAlpha = 1;
+    ctx3D.restore();
+}
+
+function drawGhostShips() {
+    if (!pendingOrder.active) return;
+    ctx3D.save();
+    ctx3D.setLineDash([4, 4]);
+    for (const [cs, tgt] of Object.entries(pendingOrder.targets)) {
+        if ((captainStates[cs] || 'IDLE') === 'READY') continue;
+        const meta = targetAssignments[cs];
+        if (!meta) continue;
+        const sizeMap = { SMALL: 10, MEDIUM: 30, LARGE: 50 };
+        const r = (sizeMap[meta.size] || 30) / 2;
+        const shape = meta.shape || 'BOX';
+        const gx = tgt.x, gy = tgt.y, gz = tgt.z;
+        ctx3D.strokeStyle = meta.color || '#00ff66';
+        ctx3D.lineWidth = 1;
+        ctx3D.globalAlpha = 0.28;
+        let vertices = [], idxStr = "";
+        if (shape === "WEDGE") {
+            vertices = [project3DTo2D(gx,gy+r,gz),project3DTo2D(gx-r,gy-r,gz-r),project3DTo2D(gx+r,gy-r,gz-r),project3DTo2D(gx-r,gy-r,gz+r),project3DTo2D(gx+r,gy-r,gz+r)];
+            idxStr = "0-1-0-2-0-3-0-4-1-2-1-3-2-4-3-4";
+        } else if (shape === "ARROW") {
+            vertices = [project3DTo2D(gx,gy+r,gz),project3DTo2D(gx-r,gy-r,gz),project3DTo2D(gx,gy-r/2,gz),project3DTo2D(gx+r,gy-r,gz),project3DTo2D(gx,gy,gz+r/2),project3DTo2D(gx,gy,gz-r/2)];
+            idxStr = "0-1-0-3-1-2-3-2-0-4-2-4-0-5-2-5";
+        } else {
+            for (const dx of [-r,r]) for (const dy of [-r,r]) for (const dz of [-r,r]) vertices.push(project3DTo2D(gx+dx,gy+dy,gz+dz));
+            idxStr = "0-1-1-3-3-2-2-0-4-5-5-7-7-6-6-4-0-4-1-5-2-6-3-7";
+        }
+        drawShipMeshLines(ctx3D, vertices, idxStr.split("-").map(Number));
+        const lbl = project3DTo2D(gx, gy, gz);
+        ctx3D.globalAlpha = 0.4;
+        ctx3D.fillStyle = meta.color || '#00ff66';
+        ctx3D.font = "9px monospace";
+        ctx3D.fillText(`→ ${cs}`, lbl.x + 14, lbl.y - 2);
+    }
+    ctx3D.setLineDash([]);
+    ctx3D.globalAlpha = 1;
+    ctx3D.restore();
+}
+
+// ─── WEBSOCKET ───────────────────────────────────────────────────────────────
+
+ws.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+
+    if (data.type === "SYNC_ALL") {
+        activeFormation = data.formation;
+        targetAssignments = data.assignments || {};
+        document.getElementById('ui-formation').innerText = activeFormation;
+        onlineCaptains = data.onlineCaptains || [];
+
+        for (const [cs, td] of Object.entries(targetAssignments)) {
+            if (!fleetAssignments[cs]) {
+                fleetAssignments[cs] = JSON.parse(JSON.stringify(td));
+            } else {
+                Object.assign(fleetAssignments[cs], { ship: td.ship, size: td.size, shape: td.shape, color: td.color });
+            }
         }
 
-        function snapCameraAngle(yaw, pitch) {
-            camYaw = yaw;
-            camPitch = pitch;
+        if (data.colors) applyColors(data.colors);
+        if (data.formationList) rebuildFormationButtons(data.formationList);
+        if (data.captainStates) captainStates = data.captainStates;
+        if (data.pendingOrder && data.pendingOrder.active) pendingOrder = data.pendingOrder;
+        if (data.gridConfig)   { gridConfig = data.gridConfig; updateScaleBar(); }
+        if (data.shipLibrary)  { shipLibrary = data.shipLibrary; }
+        if (data.uiLayout)     { applyUiLayout(data.uiLayout); }
+        rebuildRoster();
+    }
+
+    else if (data.type === "FORMATION_SHIFT") {
+        targetAssignments = data.assignments || {};
+        for (const [cs, td] of Object.entries(targetAssignments)) {
+            if (fleetAssignments[cs]) {
+                Object.assign(fleetAssignments[cs], { ship: td.ship, size: td.size, shape: td.shape, color: td.color });
+            } else {
+                fleetAssignments[cs] = JSON.parse(JSON.stringify(td));
+            }
         }
-
-        function initViewports() {
-            canvas3D.width = window.innerWidth;
-            canvas3D.height = window.innerHeight;
+        // Remove slots that were deleted
+        for (const cs of Object.keys(fleetAssignments)) {
+            if (!targetAssignments[cs]) delete fleetAssignments[cs];
         }
-        window.addEventListener('resize', initViewports);
-        initViewports();
-        ws.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            if (data.type === "SYNC_ALL") {
-                activeFormation = data.formation;
-                targetAssignments = data.assignments;
-                document.getElementById('ui-formation').innerText = activeFormation;
-                
-                for (const [callsign, targetData] of Object.entries(data.assignments)) {
-                    if (!fleetAssignments[callsign]) {
-                        fleetAssignments[callsign] = JSON.parse(JSON.stringify(targetData));
-                    } else {
-                        fleetAssignments[callsign].ship = targetData.ship;
-                        fleetAssignments[callsign].size = targetData.size;
-                        fleetAssignments[callsign].shape = targetData.shape;
-                    }
-                }
+        if (editingCallsign && fleetAssignments[editingCallsign]) showShipEditor(editingCallsign);
+        rebuildRoster();
+    }
 
-                if (data.colors) {
-                    const c = data.colors;
-                    document.getElementById('cfg-hud').value = c.hud;
-                    document.getElementById('cfg-lead').value = c.lead;
-                    document.getElementById('cfg-escort').value = c.escort;
-                    document.getElementById('cfg-grid').value = c.grid;
-                    document.getElementById('cfg-bg').value = c.bg;
-                    
-                    const r = document.documentElement.style;
-                    r.setProperty('--hud-color', c.hud); r.setProperty('--lead-color', c.lead);
-                    r.setProperty('--escort-color', c.escort); r.setProperty('--bg-color', c.bg);
-                    const bigInt = parseInt(c.grid.slice(1), 16);
-                    const rVal = (bigInt >> 16) & 255; const gVal = (bigInt >> 8) & 255; const bVal = bigInt & 255;
-                    r.setProperty('--grid-color', "rgba(" + rVal + "," + gVal + "," + bVal + ", 0.08)");
-                }
+    else if (data.type === "CAPTAIN_JOINED" || data.type === "CAPTAIN_LEFT") {
+        onlineCaptains = data.onlineCaptains || [];
+        if (data.assignments) {
+            targetAssignments = data.assignments;
+            for (const [cs, td] of Object.entries(targetAssignments)) {
+                if (!fleetAssignments[cs]) fleetAssignments[cs] = JSON.parse(JSON.stringify(td));
+                else Object.assign(fleetAssignments[cs], { ship: td.ship, size: td.size, shape: td.shape, color: td.color });
+            }
+        }
+        rebuildRoster();
+    }
 
-                if (data.formationList) {
-                    const btnContainer = document.getElementById('formation-buttons');
-                    btnContainer.innerHTML = "";
-                    data.formationList.forEach(name => {
-                        const btn = document.createElement('button');
-                        btn.innerText = name.replace('-', ' ');
-                        btn.onclick = () => { ws.send(JSON.stringify({ type: "SELECT_FORMATION", name: name })); };
-                        btnContainer.appendChild(btn);
-                    });
-                }
-            } else if (data.type === "FORMATION_SHIFT") {
-                targetAssignments = data.assignments;
-                for (const [callsign, targetData] of Object.entries(data.assignments)) {
-                    if (fleetAssignments[callsign]) {
-                        fleetAssignments[callsign].ship = targetData.ship;
-                        fleetAssignments[callsign].size = targetData.size;
-                        fleetAssignments[callsign].shape = targetData.shape;
-                    }
-                }
-                if (editingCallsign && fleetAssignments[editingCallsign]) {
-                    showShipEditor(editingCallsign);
-                }
-            } else if (data.type === "THEME_UPDATED") {
-                const c = data.colors;
-                document.getElementById('cfg-hud').value = c.hud;
-                document.getElementById('cfg-lead').value = c.lead;
-                document.getElementById('cfg-escort').value = c.escort;
-                document.getElementById('cfg-grid').value = c.grid;
-                document.getElementById('cfg-bg').value = c.bg;
-                
-                const r = document.documentElement.style;
-                r.setProperty('--hud-color', c.hud); r.setProperty('--lead-color', c.lead);
-                r.setProperty('--escort-color', c.escort); r.setProperty('--bg-color', c.bg);
-                const bigInt = parseInt(c.grid.slice(1), 16);
-                const rVal = (bigInt >> 16) & 255; const gVal = (bigInt >> 8) & 255; const bVal = bigInt & 255;
-                r.setProperty('--grid-color', "rgba(" + rVal + "," + gVal + "," + bVal + ", 0.08)");
+    else if (data.type === "THEME_UPDATED") {
+        applyColors(data.colors);
+    }
+
+    else if (data.type === "GRID_UPDATED") {
+        gridConfig = data.gridConfig;
+        updateScaleBar();
+    }
+
+    else if (data.type === "SHIP_LIBRARY_UPDATED") {
+        shipLibrary = data.shipLibrary || {};
+        // Refresh ship lib UI if modal is open on that tab
+        if (document.getElementById('cfg-tab-ships').style.display !== 'none') {
+            rebuildShipLibraryUI();
+        }
+    }
+
+    else if (data.type === "FORMATION_ORDER") {
+        pendingOrder = { active: true, formation: data.formation, targets: data.targets || {}, paths: data.paths || {} };
+        captainStates = data.captainStates || {};
+        showNotif(`▶ ORDER ISSUED — ${data.formation}`, '#ffee44', null);
+        rebuildRoster();
+    }
+
+    else if (data.type === "CAPTAIN_STATE_CHANGE") {
+        captainStates = data.captainStates || captainStates;
+        if (data.assignments) {
+            targetAssignments = data.assignments;
+            for (const [cs, td] of Object.entries(targetAssignments)) {
+                if (!fleetAssignments[cs]) fleetAssignments[cs] = JSON.parse(JSON.stringify(td));
+                else Object.assign(fleetAssignments[cs], { ship: td.ship, size: td.size, shape: td.shape, color: td.color });
+            }
+        }
+        if (data.pingCommander) {
+            playCommanderPing();
+            showNotif(`✓ ${data.callsign} — IN POSITION`, '#44ff88', 4000);
+        }
+        rebuildRoster();
+    }
+
+    else if (data.type === "FORMATION_COMPLETE") {
+        pendingOrder = { active: false, formation: null, targets: {}, paths: {} };
+        for (const cs of Object.keys(captainStates)) captainStates[cs] = 'IDLE';
+        if (data.assignments) {
+            targetAssignments = data.assignments;
+            for (const [cs, td] of Object.entries(targetAssignments)) {
+                if (!fleetAssignments[cs]) fleetAssignments[cs] = JSON.parse(JSON.stringify(td));
+                else Object.assign(fleetAssignments[cs], { ship: td.ship, size: td.size, shape: td.shape, color: td.color, x: td.x, y: td.y, z: td.z });
+            }
+        }
+        showNotif(`✦ FORMATION COMPLETE — ${data.formation || ''}`, '#44ffcc', 6000);
+        rebuildRoster();
+    }
+};
+
+// ─── FORMATION BUTTONS ────────────────────────────────────────────────────────
+
+function rebuildFormationButtons(list) {
+    const bc = document.getElementById('formation-buttons');
+    bc.innerHTML = "";
+    // Keep Issue Order select in sync with the formation list
+    const sel = document.getElementById('order-target-select');
+    if (sel) {
+        const prev = sel.value;
+        sel.innerHTML = '';
+        list.forEach(name => {
+            const opt = document.createElement('option');
+            opt.value = name; opt.textContent = name.replaceAll('-', ' ');
+            sel.appendChild(opt);
+        });
+        if (prev && list.includes(prev)) sel.value = prev;
+    }
+    list.forEach(name => {
+        const row = document.createElement('div');
+        row.className = 'formation-row';
+
+        const btn = document.createElement('button');
+        btn.innerText = name.replaceAll('-', ' ');
+        btn.onclick = () => ws.send(JSON.stringify({ type: "SELECT_FORMATION", name }));
+
+        const del = document.createElement('button');
+        del.innerText = '✕';
+        del.className = 'danger btn-del-formation';
+        del.title = 'Delete formation';
+        del.onclick = () => {
+            if (confirm(`Delete formation "${name}"?`)) {
+                ws.send(JSON.stringify({ type: "DELETE_FORMATION", name }));
             }
         };
 
-        function commitCustomFormation() {
-            const tag = document.getElementById('custom-name-input').value.trim().replace(/\s+/g, '-');
-            if(tag) ws.send(JSON.stringify({ type: "SAVE_FORMATION", name: tag }));
-        }
+        row.appendChild(btn);
+        row.appendChild(del);
+        bc.appendChild(row);
+    });
+}
 
-        function showShipEditor(callsign) {
-            editingCallsign = callsign;
-            const ship = fleetAssignments[callsign];
-            document.getElementById('edit-callsign').innerText = callsign;
-            document.getElementById('edit-name').value = ship.ship;
-            document.getElementById('edit-size').value = ship.size || "MEDIUM";
-            document.getElementById('edit-shape').value = ship.shape || "BOX";
-            document.getElementById('ship-editor').style.display = "block";
-        }
+function commitCustomFormation() {
+    const tag = document.getElementById('custom-name-input').value.trim().replace(/\s+/g, '-');
+    if (tag) ws.send(JSON.stringify({ type: "SAVE_FORMATION", name: tag }));
+}
 
-        function saveSelectedShipConfig() {
-            if (!editingCallsign) return;
-            ws.send(JSON.stringify({
-                type: "UPDATE_SHIP_CONFIG",
-                callsign: editingCallsign,
-                name: document.getElementById('edit-name').value,
-                size: document.getElementById('edit-size').value,
-                shape: document.getElementById('edit-shape').value
-            }));
-        }
-        function handleMiniMouseDown(e, canvasEl, axis1, axis2, inv1, inv2) {
-            const rect = canvasEl.getBoundingClientRect();
-            const mouseX = e.clientX - rect.left;
-            const mouseY = e.clientY - rect.top;
-            
-            const midX = canvasEl.width / 2;
-            const midY = canvasEl.height / 2;
+// ─── SHIP EDITOR ─────────────────────────────────────────────────────────────
 
-            for (const [callsign, data] of Object.entries(fleetAssignments)) {
-                const val1 = inv1 ? -data[axis1] : data[axis1];
-                const val2 = inv2 ? -data[axis2] : data[axis2];
-                const posX = midX + (val1 * ORTHO_SCALE);
-                const posY = midY + (val2 * ORTHO_SCALE);
-                
-                if (Math.hypot(mouseX - posX, mouseY - posY) < 12) {
-                    selectedToken = callsign;
-                    activeAxisMode = { c: canvasEl, a1: axis1, a2: axis2, i1: inv1, i2: inv2 };
-                    showShipEditor(callsign);
-                    break;
-                }
+function showShipEditor(callsign) {
+    editingCallsign = callsign;
+    const ship = fleetAssignments[callsign];
+    document.getElementById('edit-callsign').innerText = callsign;
+    document.getElementById('edit-name').value  = ship.ship || '';
+    document.getElementById('edit-size').value  = ship.size  || 'MEDIUM';
+    document.getElementById('edit-shape').value = ship.shape || 'BOX';
+    document.getElementById('edit-color').value = ship.color || '#00ff66';
+    document.getElementById('ship-editor').style.display = 'block';
+}
+
+function saveSelectedShipConfig() {
+    if (!editingCallsign) return;
+    ws.send(JSON.stringify({
+        type: "UPDATE_SHIP_CONFIG",
+        callsign: editingCallsign,
+        name:  document.getElementById('edit-name').value,
+        size:  document.getElementById('edit-size').value,
+        shape: document.getElementById('edit-shape').value
+    }));
+    // Color override goes via COMMANDER_OVERRIDE
+    ws.send(JSON.stringify({
+        type: "COMMANDER_OVERRIDE",
+        callsign: editingCallsign,
+        color: document.getElementById('edit-color').value
+    }));
+}
+
+function removeShip(callsign) {
+    if (!callsign) return;
+    if (confirm(`Remove ship slot "${callsign}" from formation?`)) {
+        ws.send(JSON.stringify({ type: "REMOVE_SHIP", callsign }));
+        document.getElementById('ship-editor').style.display = 'none';
+        editingCallsign = null;
+    }
+}
+
+function kickCaptain(callsign) {
+    if (!callsign) return;
+    if (onlineCaptains.includes(callsign)) {
+        ws.send(JSON.stringify({ type: "KICK_CAPTAIN", callsign }));
+    }
+}
+
+// ─── ADD SHIP ─────────────────────────────────────────────────────────────────
+
+function addShip() {
+    const callsign = document.getElementById('new-callsign').value.trim();
+    const ship     = document.getElementById('new-ship').value.trim();
+    const slot     = document.getElementById('new-slot').value.trim() || 'Escort';
+    if (!callsign || !ship) { alert('Callsign and Ship are required.'); return; }
+    ws.send(JSON.stringify({ type: "ADD_SHIP", callsign, ship, slot, size: "MEDIUM", shape: "ARROW", color: "#00ff66" }));
+    document.getElementById('new-callsign').value = '';
+    document.getElementById('new-ship').value = '';
+}
+
+// ─── ROSTER ───────────────────────────────────────────────────────────────────
+
+function rebuildRoster() {
+    const list = document.getElementById('roster-list');
+    const entries = Object.entries(targetAssignments);
+    if (entries.length === 0) {
+        list.innerHTML = '<span style="color:#444;">NO SHIPS IN FORMATION</span>';
+        return;
+    }
+    list.innerHTML = '';
+    entries.forEach(([cs, data]) => {
+        const isOnline = onlineCaptains.includes(cs);
+        const state    = captainStates[cs] || 'IDLE';
+        const stateBadge =
+            state === 'READY'        ? `<span style="color:#44ff88;font-size:8px;font-weight:bold;margin-left:2px;">✓RDY</span>` :
+            state === 'ACKNOWLEDGED' ? `<span style="color:#ffee44;font-size:8px;font-weight:bold;margin-left:2px;">⚑ACK</span>` :
+            '';
+        const row = document.createElement('div');
+        row.className = 'captain-row';
+        row.style.cursor = 'pointer';
+        row.innerHTML = `
+            <div class="captain-dot" style="background:${data.color || '#00ff66'}"></div>
+            <span class="captain-name">${cs}</span>
+            <span class="captain-ship">${data.ship}</span>
+            ${stateBadge}
+            <span class="${isOnline ? 'captain-online' : 'captain-offline'}" style="margin-left:auto;">${isOnline ? '● LIVE' : '○ OFF'}</span>
+        `;
+        row.onclick = () => showShipEditor(cs);
+        list.appendChild(row);
+    });
+    document.getElementById('ui-count').innerText = entries.length;
+}
+
+// ─── VIEWPORT ────────────────────────────────────────────────────────────────
+
+function initViewports() {
+    canvas3D.width  = window.innerWidth;
+    canvas3D.height = window.innerHeight;
+}
+window.addEventListener('resize', initViewports);
+initViewports();
+
+// Zoom via scroll wheel
+canvas3D.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const factor = e.deltaY < 0 ? 1.1 : 0.9;
+    zoomLevel = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoomLevel * factor));
+    updateScaleBar();
+}, { passive: false });
+
+// ─── PROJECTION ──────────────────────────────────────────────────────────────
+
+function project3DTo2D(x, y, z) {
+    const cosY = Math.cos(camYaw),  sinY = Math.sin(camYaw);
+    const cosP = Math.cos(camPitch), sinP = Math.sin(camPitch);
+
+    const x1 =  x * cosY - y * sinY;
+    const y1 =  x * sinY + y * cosY;
+    const z2 =  z * cosP - y1 * sinP;
+    const y2 =  z * sinP + y1 * cosP;
+
+    const fovScale = 450 * zoomLevel;
+    const distance = 600;
+    const screenX = (canvas3D.width  / 2) + (x1 * (fovScale / (y2 + distance)));
+    const screenY = (canvas3D.height / 2) - (z2 * (fovScale / (y2 + distance)));
+
+    return { x: screenX, y: screenY, depth: y2 };
+}
+
+/** Fixed projection — used for grid lines so they never scale with zoom. */
+function projectFixed(x, y, z) {
+    const cosY = Math.cos(camYaw),  sinY = Math.sin(camYaw);
+    const cosP = Math.cos(camPitch), sinP = Math.sin(camPitch);
+    const x1 =  x * cosY - y * sinY;
+    const y1 =  x * sinY + y * cosY;
+    const z2 =  z * cosP - y1 * sinP;
+    const y2 =  z * sinP + y1 * cosP;
+    const screenX = (canvas3D.width  / 2) + (x1 * (450 / (y2 + 600)));
+    const screenY = (canvas3D.height / 2) - (z2 * (450 / (y2 + 600)));
+    return { x: screenX, y: screenY, depth: y2 };
+}
+
+// ─── WIREFRAME SHIPS ─────────────────────────────────────────────────────────
+
+function drawShipMeshLines(ctx, pts, links) {
+    for (let i = 0; i < links.length; i += 2) {
+        const p1 = pts[links[i]], p2 = pts[links[i+1]];
+        if (p1 && p2) { ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke(); }
+    }
+}
+
+function drawCustomWireframeShip(ctx, node, centerPt) {
+    const sizeMap = { SMALL: 10, MEDIUM: 30, LARGE: 50 };
+    const r = (sizeMap[node.meta.size] || 30) / 2;
+    const shape = node.meta.shape || "BOX";
+    const cx = fleetAssignments[node.callsign].x;
+    const cy = fleetAssignments[node.callsign].y;
+    const cz = fleetAssignments[node.callsign].z;
+
+    ctx.lineWidth = 2;
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = ctx.strokeStyle;
+
+    let vertices = [], idxStr = "";
+
+    if (shape === "WEDGE") {
+        vertices = [
+            project3DTo2D(cx, cy+r, cz),
+            project3DTo2D(cx-r, cy-r, cz-r),
+            project3DTo2D(cx+r, cy-r, cz-r),
+            project3DTo2D(cx-r, cy-r, cz+r),
+            project3DTo2D(cx+r, cy-r, cz+r)
+        ];
+        idxStr = "0-1-0-2-0-3-0-4-1-2-1-3-2-4-3-4";
+    } else if (shape === "ARROW") {
+        vertices = [
+            project3DTo2D(cx, cy+r, cz),
+            project3DTo2D(cx-r, cy-r, cz),
+            project3DTo2D(cx, cy-r/2, cz),
+            project3DTo2D(cx+r, cy-r, cz),
+            project3DTo2D(cx, cy, cz+r/2),
+            project3DTo2D(cx, cy, cz-r/2)
+        ];
+        idxStr = "0-1-0-3-1-2-3-2-0-4-2-4-0-5-2-5";
+    } else {
+        for (const dx of [-r, r]) for (const dy of [-r, r]) for (const dz of [-r, r])
+            vertices.push(project3DTo2D(cx+dx, cy+dy, cz+dz));
+        idxStr = "0-1-1-3-3-2-2-0-4-5-5-7-7-6-6-4-0-4-1-5-2-6-3-7";
+    }
+    drawShipMeshLines(ctx, vertices, idxStr.split("-").map(Number));
+    ctx.shadowBlur = 0;
+}
+
+// ─── MINI MAP RENDER ─────────────────────────────────────────────────────────
+
+function renderMiniOrthographicHUD(ctx, cEl, axis1, axis2, inv1, inv2) {
+    ctx.clearRect(0, 0, cEl.width, cEl.height);
+    const mX = cEl.width / 2, mY = cEl.height / 2;
+
+    const gridColor = getComputedStyle(document.documentElement).getPropertyValue('--grid-color').trim();
+    ctx.strokeStyle = gridColor;
+    ctx.lineWidth = 1;
+    {
+        const step = gridConfig.squareSizeMeters;
+        const halfMax = Math.max(
+            Math.floor(gridConfig.squaresX / 2),
+            Math.floor(gridConfig.squaresY / 2)
+        ) * step;
+        for (let g = -halfMax; g <= halfMax; g += step) {
+            const coord = g * ORTHO_SCALE;
+            ctx.beginPath(); ctx.moveTo(mX + coord, 0);       ctx.lineTo(mX + coord, cEl.height); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(0, mY + coord);        ctx.lineTo(cEl.width, mY + coord);  ctx.stroke();
+        }
+    }
+    ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--hud-color').trim();
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(mX,0); ctx.lineTo(mX,cEl.height); ctx.moveTo(0,mY); ctx.lineTo(cEl.width,mY); ctx.stroke();
+
+    const leadColor   = getComputedStyle(document.documentElement).getPropertyValue('--lead-color').trim();
+    const escortColor = getComputedStyle(document.documentElement).getPropertyValue('--escort-color').trim();
+
+    for (const [callsign, tData] of Object.entries(targetAssignments)) {
+        if (!fleetAssignments[callsign]) continue;
+
+        fleetAssignments[callsign][axis1] += (tData[axis1] - fleetAssignments[callsign][axis1]) * 0.15;
+        fleetAssignments[callsign][axis2] += (tData[axis2] - fleetAssignments[callsign][axis2]) * 0.15;
+
+        const val1 = inv1 ? -fleetAssignments[callsign][axis1] : fleetAssignments[callsign][axis1];
+        const val2 = inv2 ? -fleetAssignments[callsign][axis2] : fleetAssignments[callsign][axis2];
+        const curX = mX + val1 * ORTHO_SCALE;
+        const curY = mY + val2 * ORTHO_SCALE;
+
+        // Use per-ship color, fall back to slot color
+        const shipColor = tData.color || (tData.slot === "Lead" ? leadColor : escortColor);
+        ctx.fillStyle = shipColor;
+        ctx.beginPath(); ctx.arc(curX, curY, 5, 0, 2*Math.PI); ctx.fill();
+        ctx.fillStyle = "#ffffff"; ctx.font = "8px sans-serif";
+        ctx.fillText(callsign, curX + 7, curY + 3);
+    }
+}
+
+// ─── MAIN RENDER LOOP ─────────────────────────────────────────────────────────
+
+function drawMasterFrameEngine() {
+    ctx3D.clearRect(0, 0, canvas3D.width, canvas3D.height);
+
+    renderMiniOrthographicHUD(ctxXY, mXY, 'x', 'y', false, true);
+    renderMiniOrthographicHUD(ctxXZ, mXZ, 'x', 'z', false, true);
+    renderMiniOrthographicHUD(ctxYZ, mYZ, 'y', 'z', false, true);
+
+    updateCamReadout();
+    updateScaleBar();
+
+    const gridColor   = getComputedStyle(document.documentElement).getPropertyValue('--grid-color').trim();
+    const leadColor   = getComputedStyle(document.documentElement).getPropertyValue('--lead-color').trim();
+    const escortColor = getComputedStyle(document.documentElement).getPropertyValue('--escort-color').trim();
+
+    // 3D volumetric grid — fixed pixel size (projectFixed, unaffected by zoom)
+    {
+        const gc   = gridConfig;
+        const step = gc.squareSizeMeters;
+        const hx   = Math.floor(gc.squaresX / 2) * step;
+        const hy   = Math.floor(gc.squaresY / 2) * step;
+        const hz   = Math.floor(gc.squaresZ / 2) * step;
+
+        ctx3D.lineWidth = 1;
+        for (let zl = -hz; zl <= hz; zl += step) {
+            ctx3D.strokeStyle = zl === 0 ? gridColor : "rgba(26,61,84,0.25)";
+            for (let g = -hx; g <= hx; g += step) {
+                let s = projectFixed(g, -hy, zl), e = projectFixed(g, hy, zl);
+                ctx3D.beginPath(); ctx3D.moveTo(s.x,s.y); ctx3D.lineTo(e.x,e.y); ctx3D.stroke();
+            }
+            for (let g = -hy; g <= hy; g += step) {
+                let s = projectFixed(-hx, g, zl), e = projectFixed(hx, g, zl);
+                ctx3D.beginPath(); ctx3D.moveTo(s.x,s.y); ctx3D.lineTo(e.x,e.y); ctx3D.stroke();
+            }
+        }
+        // Vertical pillars
+        ctx3D.strokeStyle = "rgba(255,255,255,0.02)";
+        for (let gx = -hx; gx <= hx; gx += step) {
+            for (let gy = -hy; gy <= hy; gy += step) {
+                const vs = projectFixed(gx, gy, -hz), ve = projectFixed(gx, gy, hz);
+                ctx3D.beginPath(); ctx3D.moveTo(vs.x,vs.y); ctx3D.lineTo(ve.x,ve.y); ctx3D.stroke();
             }
         }
 
-        function trackMouseMoves(e) {
-            if (selectedToken && activeAxisMode) {
-                const rect = activeAxisMode.c.getBoundingClientRect();
-                const midX = activeAxisMode.c.width / 2;
-                const midY = activeAxisMode.c.height / 2;
-                
-                let rawVal1 = ((e.clientX - rect.left) - midX) / ORTHO_SCALE;
-                let rawVal2 = ((e.clientY - rect.top) - midY) / ORTHO_SCALE;
+        // Forward vector chevrons — spaced at 0.6 / 1.2 / 1.8 grid squares forward
+        const arm = step * 0.15;
+        ctx3D.strokeStyle = "rgba(255,0,85,0.3)";
+        ctx3D.lineWidth = 2;
+        [0.6, 1.2, 1.8].forEach(mult => {
+            const dist = step * mult;
+            const tip = projectFixed(0, dist, 0), lw = projectFixed(-arm, dist - arm, 0), rw = projectFixed(arm, dist - arm, 0);
+            ctx3D.beginPath(); ctx3D.moveTo(lw.x,lw.y); ctx3D.lineTo(tip.x,tip.y); ctx3D.lineTo(rw.x,rw.y); ctx3D.stroke();
+        });
+        const fwdPt = projectFixed(0, step * 2.2, 0);
+        ctx3D.fillStyle = leadColor; ctx3D.font = "bold 9px monospace";
+        ctx3D.fillText("▲ FORWARD VECTOR (FORE)", fwdPt.x - 60, fwdPt.y);
+    }
 
-                if (activeAxisMode.i1) rawVal1 = -rawVal1;
-                if (activeAxisMode.i2) rawVal2 = -rawVal2;
+    // Formation order overlays — paths then ghost ships (drawn under real ships)
+    drawBezierPaths();
+    drawGhostShips();
 
-                const snapVal1 = Math.round(rawVal1 / 10) * 10;
-                const snapVal2 = Math.round(rawVal2 / 10) * 10;
+    // Ships
+    const pool = [];
+    for (const [callsign, tData] of Object.entries(targetAssignments)) {
+        const cur = fleetAssignments[callsign] || tData;
+        pool.push({ callsign, proj: project3DTo2D(cur.x, cur.y, cur.z), meta: tData });
+    }
+    document.getElementById('ui-count').innerText = pool.length;
+    pool.sort((a,b) => b.proj.depth - a.proj.depth);
 
-                fleetAssignments[selectedToken][activeAxisMode.a1] = snapVal1;
-                fleetAssignments[selectedToken][activeAxisMode.a2] = snapVal2;
-                targetAssignments[selectedToken][activeAxisMode.a1] = snapVal1;
-                targetAssignments[selectedToken][activeAxisMode.a2] = snapVal2;
+    pool.forEach(node => {
+        const pt = node.proj;
+        const shipColor = node.meta.color || (node.meta.slot === "Lead" ? leadColor : escortColor);
 
-                let msg = { type: "TOKEN_MOVE_3D", callsign: selectedToken };
-                msg[activeAxisMode.a1] = snapVal1;
-                msg[activeAxisMode.a2] = snapVal2;
-                ws.send(JSON.stringify(msg));
-            } else if (isDraggingCam) {
-                const deltaX = e.clientX - lastMousePos.x;
-                const deltaY = e.clientY - lastMousePos.y;
-                camYaw += deltaX * 0.007;
-                camPitch -= deltaY * 0.007;
-                
-                const pi2 = Math.PI * 2;
-                camYaw = (camYaw % pi2 + pi2) % pi2;
-                camPitch = (camPitch % pi2 + pi2) % pi2;
-                
-                lastMousePos = { x: e.clientX, y: e.clientY };
-            }
-        }
+        // Altitude drop line
+        const anchor = project3DTo2D(fleetAssignments[node.callsign].x, fleetAssignments[node.callsign].y, 0);
+        ctx3D.strokeStyle = "rgba(255,255,255,0.08)";
+        ctx3D.lineWidth = 1;
+        ctx3D.beginPath(); ctx3D.moveTo(anchor.x,anchor.y); ctx3D.lineTo(pt.x,pt.y); ctx3D.stroke();
 
-        mXY.addEventListener('mousedown', (e) => handleMiniMouseDown(e, mXY, 'x', 'y', false, true));
-        mXZ.addEventListener('mousedown', (e) => handleMiniMouseDown(e, mXZ, 'x', 'z', false, true));
-        mYZ.addEventListener('mousedown', (e) => handleMiniMouseDown(e, mYZ, 'y', 'z', false, true));
+        ctx3D.fillStyle = shipColor;
+        ctx3D.strokeStyle = shipColor;
+        drawCustomWireframeShip(ctx3D, node, pt);
 
-        function wireCameraDragElement(el) {
-            el.addEventListener('mousedown', (e) => {
-                isDraggingCam = true;
-                lastMousePos = { x: e.clientX, y: e.clientY };
-            });
-        }
-        wireCameraDragElement(canvas3D);
-        wireCameraDragElement(mCam);
+        // Label
+        ctx3D.fillStyle = "#ffffff"; ctx3D.font = "bold 11px sans-serif";
+        ctx3D.fillText(`${node.callsign} [${node.meta.ship}]`, pt.x+16, pt.y-3);
+        ctx3D.fillStyle = "#888"; ctx3D.font = "9px sans-serif";
+        ctx3D.fillText(
+            `X:${Math.round(fleetAssignments[node.callsign].x)} Y:${Math.round(fleetAssignments[node.callsign].y)} Z:${Math.round(fleetAssignments[node.callsign].z)}m`,
+            pt.x+16, pt.y+9
+        );
 
-        window.addEventListener('mousemove', trackMouseMoves);
-        window.addEventListener('mouseup', () => { selectedToken = null; activeAxisMode = null; isDraggingCam = false; });
-         function project3DTo2D(x, y, z) {
-            let cosY = Math.cos(camYaw), sinY = Math.sin(camYaw);
-            let cosP = Math.cos(camPitch), sinP = Math.sin(camPitch);
-
-            let x1 = x * cosY - y * sinY;
-            let y1 = x * sinY + y * cosY;
-
-            let z2 = z * cosP - y1 * sinP;
-            let y2 = z * sinP + y1 * cosP;
-
-            const fovScale = 450; 
-            const distance = 600;
-            const screenX = (canvas3D.width / 2) + (x1 * (fovScale / (y2 + distance)));
-            const screenY = (canvas3D.height / 2) - (z2 * (fovScale / (y2 + distance)));
-
-            return { x: screenX, y: screenY, depth: y2 };
-        }
-
-        // FIXED: Reads sequential indices correctly to draw a link from vertex A to vertex B
-        function drawShipMeshLines(ctx, pts, links) {
-            for (let i = 0; i < links.length; i += 2) {
-                let idx1 = links[i];
-                let idx2 = links[i + 1];
-                let p1 = pts[idx1];
-                let p2 = pts[idx2];
-                if (p1 && p2) {
-                    ctx.beginPath();
-                    ctx.moveTo(p1.x, p1.y);
-                    ctx.lineTo(p2.x, p2.y);
-                    ctx.stroke();
-                }
-            }
-        }
-
-        function drawCustomWireframeShip(ctx, node, centerPt) {
-            const sizeMap = { "SMALL": 10, "MEDIUM": 30, "LARGE": 50 };
-            const r = (sizeMap[node.meta.size] || 30) / 2;
-            const shape = node.meta.shape || "BOX";
-            
-            ctx.lineWidth = 2;
-            ctx.shadowBlur = 10;
-            ctx.shadowColor = ctx.fillStyle;
-
-            let vertices = [];
-            let cx = fleetAssignments[node.callsign].x;
-            let cy = fleetAssignments[node.callsign].y;
-            let cz = fleetAssignments[node.callsign].z;
-
-            if (shape === "WEDGE") {
-                vertices = [
-                    project3DTo2D(cx, cy + r, cz),         // 0: Tip
-                    project3DTo2D(cx - r, cy - r, cz - r), // 1: Back Left Bottom
-                    project3DTo2D(cx + r, cy - r, cz - r), // 2: Back Right Bottom
-                    project3DTo2D(cx - r, cy - r, cz + r), // 3: Back Left Top
-                    project3DTo2D(cx + r, cy - r, cz + r)  // 4: Back Right Top
-                ];
-                const wedgeStr = "0-1-0-2-0-3-0-4-1-2-1-3-2-4-3-4";
-                const wedgeIndices = wedgeStr.split("-").map(Number);
-                drawShipMeshLines(ctx, vertices, wedgeIndices);
-
-            } else if (shape === "ARROW") {
-                vertices = [
-                    project3DTo2D(cx, cy + r, cz),         // 0: Front
-                    project3DTo2D(cx - r, cy - r, cz),     // 1: Left Wing
-                    project3DTo2D(cx, cy - r/2, cz),       // 2: Tail Inner
-                    project3DTo2D(cx + r, cy - r, cz),     // 3: Right Wing
-                    project3DTo2D(cx, cy, cz + r/2),       // 4: Dorsal Fin
-                    project3DTo2D(cx, cy, cz - r/2)        // 5: Ventral Fin
-                ];
-                const arrowStr = "0-1-0-3-1-2-3-2-0-4-2-4-0-5-2-5";
-                const arrowIndices = arrowStr.split("-").map(Number);
-                drawShipMeshLines(ctx, vertices, arrowIndices);
-
-            } else { // Standard Block Voxel Box
-                for (let dx of [-r, r]) {
-                    for (let dy of [-r, r]) {
-                        for (let dz of [-r, r]) {
-                            vertices.push(project3DTo2D(cx + dx, cy + dy, cz + dz));
-                        }
-                    }
-                }
-                const boxStr = "0-1-1-3-3-2-2-0-4-5-5-7-7-6-6-4-0-4-1-5-2-6-3-7";
-                const boxIndices = boxStr.split("-").map(Number);
-                drawShipMeshLines(ctx, vertices, boxIndices);
-            }
-            ctx.shadowBlur = 0;
-        }
-
-
-        function renderMiniOrthographicHUD(ctx, cEl, axis1, axis2, inv1, inv2) {
-            ctx.clearRect(0, 0, cEl.width, cEl.height);
-            const mX = cEl.width / 2; const mY = cEl.height / 2;
-
-            // HIGH CONTRAST UPDATE: Fetches the custom color picker values directly for the mini-map lines
-            const gridColor = getComputedStyle(document.documentElement).getPropertyValue('--grid-color').trim();
-            ctx.strokeStyle = gridColor; 
-            ctx.lineWidth = 1;
-            
-            for (let g = -200; g <= 200; g += 100) {
-                let coord = g * ORTHO_SCALE;
-                ctx.beginPath(); ctx.moveTo(mX + coord, 0); ctx.lineTo(mX + coord, cEl.height); ctx.stroke();
-                ctx.beginPath(); ctx.moveTo(0, mY + coord); ctx.lineTo(cEl.width, mY + coord); ctx.stroke();
-            }
-
-            ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--hud-color').trim();
-            ctx.lineWidth = 1.5;
-            ctx.beginPath(); ctx.moveTo(mX, 0); ctx.lineTo(mX, cEl.height); ctx.moveTo(0, mY); ctx.lineTo(cEl.width, mY); ctx.stroke();
-
-            const leadColor = getComputedStyle(document.documentElement).getPropertyValue('--lead-color').trim();
-            const escortColor = getComputedStyle(document.documentElement).getPropertyValue('--hud-color').trim();
-
-            for (const [callsign, tData] of Object.entries(targetAssignments)) {
-                if (!fleetAssignments[callsign]) continue;
-                
-                fleetAssignments[callsign][axis1] += (tData[axis1] - fleetAssignments[callsign][axis1]) * 0.15;
-                fleetAssignments[callsign][axis2] += (tData[axis2] - fleetAssignments[callsign][axis2]) * 0.15;
-
-                let val1 = inv1 ? -fleetAssignments[callsign][axis1] : fleetAssignments[callsign][axis1];
-                let val2 = inv2 ? -fleetAssignments[callsign][axis2] : fleetAssignments[callsign][axis2];
-
-                const curX = mX + (val1 * ORTHO_SCALE);
-                const curY = mY + (val2 * ORTHO_SCALE);
-
-                ctx.fillStyle = tData.slot === "Lead" ? leadColor : escortColor;
-                ctx.beginPath(); ctx.arc(curX, curY, 5, 0, 2 * Math.PI); ctx.fill();
-                
-                ctx.fillStyle = "#ffffff"; ctx.font = "8px sans-serif";
-                ctx.fillText(callsign, curX + 7, curY + 3);
-            }
-        }
-        function drawMasterFrameEngine() {
-            ctx3D.clearRect(0, 0, canvas3D.width, canvas3D.height);
-
-            renderMiniOrthographicHUD(ctxXY, mXY, 'x', 'y', false, true);
-            renderMiniOrthographicHUD(ctxXZ, mXZ, 'x', 'z', false, true);
-            renderMiniOrthographicHUD(ctxYZ, mYZ, 'y', 'z', false, true);
-
-            ctxCam.clearRect(0, 0, mCam.width, mCam.height);
-            ctxCam.fillStyle = "#ffffff"; ctxCam.font = "9px monospace";
-            ctxCam.fillText("YAW: " + camYaw.toFixed(2) + " rad", 10, 15);
-            ctxCam.fillText("PITCH: " + camPitch.toFixed(2) + " rad", 10, 30);
-
-            const currentGridColor = getComputedStyle(document.documentElement).getPropertyValue('--grid-color').trim();
-            const currentLeadColor = getComputedStyle(document.documentElement).getPropertyValue('--lead-color').trim();
-            const currentEscortColor = getComputedStyle(document.documentElement).getPropertyValue('--escort-color').trim();
-
-            // TRUE 3D VOLUMETRIC GRID MATRIX CARES ENGINE LOOP
+        // Online captain: glow ring + LIVE tag
+        if (onlineCaptains.includes(node.callsign)) {
+            const sizeMap = { SMALL: 10, MEDIUM: 30, LARGE: 50 };
+            const shipR = sizeMap[node.meta.size] || 30;
+            const screenR = (shipR / 2) * (450 * zoomLevel) / (Math.max(pt.depth + 600, 100));
+            ctx3D.save();
+            ctx3D.strokeStyle = "#00ff66";
             ctx3D.lineWidth = 1;
-            const gridAltitudes = [-100, 0, 100];
-            gridAltitudes.forEach(altZ => {
-                ctx3D.strokeStyle = altZ === 0 ? currentGridColor : "rgba(26, 61, 84, 0.25)";
-                for (let g = -200; g <= 200; g += 100) {
-                    let pStart1 = project3DTo2D(g, -200, altZ);
-                    let pEnd1 = project3DTo2D(g, 200, altZ);
-                    ctx3D.beginPath(); ctx3D.moveTo(pStart1.x, pStart1.y); ctx3D.lineTo(pEnd1.x, pEnd1.y); ctx3D.stroke();
-                    
-                    let pStart2 = project3DTo2D(-200, g, altZ);
-                    let pEnd2 = project3DTo2D(200, g, altZ);
-                    ctx3D.beginPath(); ctx3D.moveTo(pStart2.x, pStart2.y); ctx3D.lineTo(pEnd2.x, pEnd2.y); ctx3D.stroke();
-                }
-            });
-
-            ctx3D.strokeStyle = "rgba(255, 255, 255, 0.02)";
-            for (let gx = -200; gx <= 200; gx += 100) {
-                for (let gy = -200; gy <= 200; gy += 100) {
-                    let vStart = project3DTo2D(gx, gy, -100);
-                    let vEnd = project3DTo2D(gx, gy, 100);
-                    ctx3D.beginPath(); ctx3D.moveTo(vStart.x, vStart.y); ctx3D.lineTo(vEnd.x, vEnd.y); ctx3D.stroke();
-                }
-            }
-
-            const chevronDistances = [60, 120, 180];
-            ctx3D.strokeStyle = "rgba(255, 0, 85, 0.3)";
-            ctx3D.lineWidth = 2;
-            chevronDistances.forEach(dist => {
-                let tip = project3DTo2D(0, dist, 0);
-                let leftWing = project3DTo2D(-15, dist - 15, 0);
-                let rightWing = project3DTo2D(15, dist - 15, 0);
-                ctx3D.beginPath(); ctx3D.moveTo(leftWing.x, leftWing.y); ctx3D.lineTo(tip.x, tip.y); ctx3D.lineTo(rightWing.x, rightWing.y); ctx3D.stroke();
-            });
-
-            let frontLabelPt = project3DTo2D(0, 220, 0);
-            ctx3D.fillStyle = currentLeadColor; ctx3D.font = "bold 9px monospace";
-            ctx3D.fillText("▲ FORWARD VECTOR (FORE)", frontLabelPt.x - 60, frontLabelPt.y);
-
-            let depthSortPool = [];
-            let countShips = 0;
-
-            for (const [callsign, tData] of Object.entries(targetAssignments)) {
-                countShips++;
-                let currentPos = fleetAssignments[callsign] || tData;
-                let projection = project3DTo2D(currentPos.x, currentPos.y, currentPos.z);
-                depthSortPool.push({ callsign: callsign, proj: projection, meta: tData });
-            }
-            document.getElementById('ui-count').innerText = countShips;
-
-            depthSortPool.sort((a, b) => b.proj.depth - a.proj.depth);
-
-            depthSortPool.forEach(node => {
-                const screenPt = node.proj;
-                const hullColor = node.meta.slot === "Lead" ? currentLeadColor : currentEscortColor;
-                
-                let baseAnchor = project3DTo2D(fleetAssignments[node.callsign].x, fleetAssignments[node.callsign].y, 0);
-                ctx3D.strokeStyle = "rgba(255, 255, 255, 0.08)";
-                ctx3D.beginPath(); ctx3D.moveTo(baseAnchor.x, baseAnchor.y); ctx3D.lineTo(screenPt.x, screenPt.y); ctx3D.stroke();
-
-                ctx3D.fillStyle = hullColor;
-                ctx3D.strokeStyle = hullColor;
-                drawCustomWireframeShip(ctx3D, node, screenPt);
-
-                ctx3D.fillStyle = "#ffffff"; ctx3D.font = "bold 11px sans-serif";
-                ctx3D.fillText(node.callsign + " [" + node.meta.ship + "]", screenPt.x + 16, screenPt.y - 3);
-                
-                ctx3D.fillStyle = "#888888"; ctx3D.font = "9px sans-serif";
-                ctx3D.fillText("X:" + Math.round(fleetAssignments[node.callsign].x) + " Y:" + Math.round(fleetAssignments[node.callsign].y) + " Z:" + Math.round(fleetAssignments[node.callsign].z) + "m", screenPt.x + 16, screenPt.y + 9);
-            });
-
-            requestAnimationFrame(drawMasterFrameEngine);
+            ctx3D.globalAlpha = 0.35;
+            ctx3D.beginPath(); ctx3D.arc(pt.x, pt.y, screenR + 4, 0, 2*Math.PI); ctx3D.stroke();
+            ctx3D.globalAlpha = 1;
+            ctx3D.restore();
+            ctx3D.fillStyle = "#00ff66";
+            ctx3D.beginPath(); ctx3D.arc(pt.x+16, pt.y+18, 3, 0, 2*Math.PI); ctx3D.fill();
+            ctx3D.fillStyle = "#00ff66"; ctx3D.font = "8px sans-serif";
+            ctx3D.fillText("LIVE", pt.x+22, pt.y+21);
         }
+    });
 
-        requestAnimationFrame(drawMasterFrameEngine);
-    </script>
+    requestAnimationFrame(drawMasterFrameEngine);
+}
+
+// ─── INPUT: TOKEN DRAG ON MINI MAPS ──────────────────────────────────────────
+
+function handleMiniMouseDown(e, canvasEl, axis1, axis2, inv1, inv2) {
+    const rect = canvasEl.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left, mouseY = e.clientY - rect.top;
+    const midX = canvasEl.width/2, midY = canvasEl.height/2;
+
+    for (const [callsign, data] of Object.entries(fleetAssignments)) {
+        const v1 = inv1 ? -data[axis1] : data[axis1];
+        const v2 = inv2 ? -data[axis2] : data[axis2];
+        const px = midX + v1 * ORTHO_SCALE, py = midY + v2 * ORTHO_SCALE;
+        if (Math.hypot(mouseX-px, mouseY-py) < 12) {
+            selectedToken = callsign;
+            activeAxisMode = { c: canvasEl, a1: axis1, a2: axis2, i1: inv1, i2: inv2 };
+            showShipEditor(callsign);
+            break;
+        }
+    }
+}
+
+function trackMouseMoves(e) {
+    // Layout mode — panel drag / resize
+    if (layoutMode) {
+        if (dragging) {
+            const dx = e.clientX - dragging.startX;
+            const dy = e.clientY - dragging.startY;
+            dragging.el.style.left = Math.max(0, dragging.origLeft + dx) + 'px';
+            dragging.el.style.top  = Math.max(0, dragging.origTop  + dy) + 'px';
+        }
+        if (resizing) {
+            const dx = e.clientX - resizing.startX;
+            resizing.el.style.width = Math.max(200, resizing.origW + dx) + 'px';
+        }
+        return;
+    }
+
+    if (selectedToken && activeAxisMode) {
+        const rect = activeAxisMode.c.getBoundingClientRect();
+        const midX = activeAxisMode.c.width/2, midY = activeAxisMode.c.height/2;
+        let r1 = ((e.clientX - rect.left) - midX) / ORTHO_SCALE;
+        let r2 = ((e.clientY - rect.top)  - midY) / ORTHO_SCALE;
+        if (activeAxisMode.i1) r1 = -r1;
+        if (activeAxisMode.i2) r2 = -r2;
+        const s1 = Math.round(r1/10)*10, s2 = Math.round(r2/10)*10;
+        fleetAssignments[selectedToken][activeAxisMode.a1] = s1;
+        fleetAssignments[selectedToken][activeAxisMode.a2] = s2;
+        targetAssignments[selectedToken][activeAxisMode.a1] = s1;
+        targetAssignments[selectedToken][activeAxisMode.a2] = s2;
+        const msg = { type:"TOKEN_MOVE_3D", callsign:selectedToken };
+        msg[activeAxisMode.a1] = s1; msg[activeAxisMode.a2] = s2;
+        ws.send(JSON.stringify(msg));
+    } else if (isDraggingCam) {
+        const dx = e.clientX - lastMousePos.x, dy = e.clientY - lastMousePos.y;
+        camYaw   += dx * 0.007;
+        camPitch -= dy * 0.007;
+        const pi2 = Math.PI*2;
+        camYaw   = (camYaw   % pi2 + pi2) % pi2;
+        camPitch = (camPitch % pi2 + pi2) % pi2;
+        lastMousePos = { x: e.clientX, y: e.clientY };
+    }
+}
+
+mXY.addEventListener('mousedown', e => handleMiniMouseDown(e, mXY, 'x','y', false, true));
+mXZ.addEventListener('mousedown', e => handleMiniMouseDown(e, mXZ, 'x','z', false, true));
+mYZ.addEventListener('mousedown', e => handleMiniMouseDown(e, mYZ, 'y','z', false, true));
+
+canvas3D.addEventListener('mousedown', e => {
+    if (layoutMode) return;
+    isDraggingCam = true;
+    lastMousePos = { x: e.clientX, y: e.clientY };
+});
+window.addEventListener('mousemove', trackMouseMoves);
+window.addEventListener('mouseup', () => {
+    selectedToken = null; activeAxisMode = null; isDraggingCam = false;
+    if (dragging) dragging.el.style.zIndex = 100;
+    dragging = null; resizing = null;
+});
+
+// ─── CONFIG MODAL ────────────────────────────────────────────────────────────
+
+function openConfig(tab) {
+    const modal = document.getElementById('config-modal');
+    modal.style.display = 'flex';
+    switchConfigTab(tab || 'colours');
+    // Populate grid tab from live state
+    document.getElementById('cfg-sq-x').value    = gridConfig.squaresX;
+    document.getElementById('cfg-sq-y').value    = gridConfig.squaresY;
+    document.getElementById('cfg-sq-z').value    = gridConfig.squaresZ;
+    document.getElementById('cfg-sq-size').value = gridConfig.squareSizeMeters;
+    // Populate ship library tab
+    rebuildShipLibraryUI();
+}
+
+function closeConfig() {
+    document.getElementById('config-modal').style.display = 'none';
+}
+
+function switchConfigTab(name) {
+    ['colours', 'ships', 'grid', 'layout'].forEach(t => {
+        document.getElementById('cfg-tab-' + t).style.display = (t === name) ? 'block' : 'none';
+        const btn = document.querySelector(`.cfg-tab-btn[data-tab="${t}"]`);
+        if (btn) btn.classList.toggle('active', t === name);
+    });
+}
+
+// Close on Escape or click outside the box
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeConfig(); });
+document.getElementById('config-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeConfig();
+});
+
+// ── Ship Library ──────────────────────────────────────────────────────────────
+
+function rebuildShipLibraryUI() {
+    const container = document.getElementById('ship-lib-list');
+    container.innerHTML = '';
+    const entries = Object.entries(shipLibrary);
+    if (entries.length === 0) {
+        container.innerHTML = '<div style="color:#444;font-size:9px;padding:4px 0;">No entries. Ships without a library override use their assignment colour and shape.</div>';
+        return;
+    }
+    entries.forEach(([name, cfg]) => {
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid rgba(0,240,255,0.07);font-size:10px;';
+        row.innerHTML = `
+            <span style="flex:1;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${name}">${name}</span>
+            <span style="color:#888;font-size:9px;width:54px;flex-shrink:0;">${cfg.shape}</span>
+            <span style="color:#888;font-size:9px;width:26px;flex-shrink:0;">×${(cfg.scale || 1).toFixed(1)}</span>
+            <div style="width:14px;height:14px;border-radius:2px;background:${cfg.color || '#00ff66'};flex-shrink:0;border:1px solid rgba(255,255,255,0.2);"></div>
+            <button class="danger" style="padding:2px 5px;font-size:9px;" onclick="deleteShipLibEntry('${CSS.escape ? name.replace(/'/g,"\\'") : name}')">✕</button>
+        `;
+        container.appendChild(row);
+    });
+}
+
+function addShipLibEntry() {
+    const name  = document.getElementById('lib-new-name').value.trim();
+    const shape = document.getElementById('lib-new-shape').value;
+    const scale = parseFloat(document.getElementById('lib-new-scale').value) || 1.0;
+    const color = document.getElementById('lib-new-color').value;
+    if (!name) return;
+    shipLibrary[name] = { shape, scale, color };
+    document.getElementById('lib-new-name').value = '';
+    rebuildShipLibraryUI();
+}
+
+function deleteShipLibEntry(name) {
+    delete shipLibrary[name];
+    rebuildShipLibraryUI();
+}
+
+function saveShipLibrary() {
+    ws.send(JSON.stringify({ type: "SAVE_SHIP_LIBRARY", shipLibrary }));
+    showNotif('✓ Ship library saved', '#44ff88', 3000);
+}
+
+// ── Grid Config ───────────────────────────────────────────────────────────────
+
+function saveGridConfig() {
+    const cfg = {
+        squaresX:         Math.max(2, parseInt(document.getElementById('cfg-sq-x').value)    || 4),
+        squaresY:         Math.max(2, parseInt(document.getElementById('cfg-sq-y').value)    || 4),
+        squaresZ:         Math.max(2, parseInt(document.getElementById('cfg-sq-z').value)    || 2),
+        squareSizeMeters: Math.max(10, parseInt(document.getElementById('cfg-sq-size').value) || 100)
+    };
+    gridConfig = cfg;
+    updateScaleBar();
+    ws.send(JSON.stringify({ type: "SAVE_GRID_CONFIG", gridConfig: cfg }));
+    showNotif('✓ Grid config saved', '#44ffcc', 3000);
+}
+
+// ─── LAYOUT MODE ─────────────────────────────────────────────────────────────
+
+function enterLayoutMode() {
+    layoutMode = true;
+    document.body.classList.add('layout-mode');
+
+    LAYOUT_PANELS.forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.classList.add('layout-panel');
+        // Snapshot computed position and convert any right/bottom anchors to left/top
+        const rect = el.getBoundingClientRect();
+        el.style.position = 'absolute';
+        el.style.left     = Math.round(rect.left) + 'px';
+        el.style.top      = Math.round(rect.top)  + 'px';
+        el.style.right    = 'auto';
+        el.style.bottom   = 'auto';
+        el.style.width    = Math.round(rect.width) + 'px';
+        el.style.zIndex   = 100;
+        // Resize handle on control-panel only (sidebar has fixed-width canvas children)
+        if (id === 'control-panel' && !el.querySelector('.resize-handle')) {
+            const rh = document.createElement('div');
+            rh.className = 'resize-handle';
+            el.appendChild(rh);
+        }
+    });
+
+    document.getElementById('layout-exit-row').style.display  = 'block';
+    document.getElementById('layout-mode-btn').style.display  = 'none';
+    showNotif('↔ LAYOUT MODE — drag panels to reposition', '#ccaaff', 5000);
+    closeConfig();
+}
+
+function exitLayoutMode() {
+    layoutMode = false;
+    document.body.classList.remove('layout-mode');
+
+    const uiLayout = {};
+    LAYOUT_PANELS.forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        uiLayout[id] = {
+            x: parseInt(el.style.left)  || 0,
+            y: parseInt(el.style.top)   || 0,
+            w: parseInt(el.style.width) || el.offsetWidth,
+            h: el.offsetHeight
+        };
+    });
+
+    ws.send(JSON.stringify({ type: "SAVE_UI_LAYOUT", uiLayout }));
+    document.getElementById('layout-exit-row').style.display = 'none';
+    document.getElementById('layout-mode-btn').style.display = 'block';
+    showNotif('✓ Layout saved', '#ccaaff', 3000);
+}
+
+/** Apply persisted panel positions received from server. */
+function applyUiLayout(layout) {
+    if (!layout || !Object.keys(layout).length) return;
+    Object.entries(layout).forEach(([id, pos]) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.classList.add('layout-panel');
+        el.style.position = 'absolute';
+        el.style.left     = pos.x + 'px';
+        el.style.top      = pos.y + 'px';
+        el.style.right    = 'auto';
+        el.style.bottom   = 'auto';
+        if (pos.w) el.style.width = pos.w + 'px';
+    });
+}
+
+/** Layout mode mouse — drag panels + resize control-panel width. */
+document.addEventListener('mousedown', function(e) {
+    if (!layoutMode) return;
+
+    // Resize handle?
+    const rh = e.target.closest('.resize-handle');
+    if (rh) {
+        const panel = rh.closest('.layout-panel');
+        if (!panel) return;
+        e.preventDefault(); e.stopPropagation();
+        resizing = { el: panel, startX: e.clientX, origW: panel.offsetWidth };
+        return;
+    }
+
+    // Drag panel?
+    const panel = e.target.closest('.layout-panel');
+    if (!panel) return;
+    // Let interactive controls still work — only bare panel surface initiates drag
+    if (['BUTTON','INPUT','SELECT','TEXTAREA'].includes(e.target.tagName)) return;
+
+    e.preventDefault();
+    dragging = {
+        el:       panel,
+        startX:   e.clientX,
+        startY:   e.clientY,
+        origLeft: parseInt(panel.style.left) || 0,
+        origTop:  parseInt(panel.style.top)  || 0
+    };
+    panel.style.zIndex = 400;
+});
+
+// ─── BOOT ─────────────────────────────────────────────────────────────────────
+updateScaleBar();
+requestAnimationFrame(drawMasterFrameEngine);
+</script>
 </body>
 </html>

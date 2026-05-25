@@ -1,55 +1,53 @@
-# FleetCommander
-# Create the root project folder
-mkdir "Fleet Commander"
-cd "Fleet Commander"
+# Fleet Commander — SC Tactical Overlay System
 
-# Setup the Commander Server directory and dependencies
-mkdir commander-server
+## Project Structure
+
+```
+commander-server/
+  server.py         — Python backend (WebSocket + HTTP)
+  tactical.html     — Commander's 3D tactical map (browser)
+  formations.json   — Persisted fleet state (auto-generated on first run)
+
+captain-client/
+  main.js           — Electron entry point
+  preload.js        — IPC bridge (click-through toggle)
+  index.html        — Captain HUD overlay
+  package.json      — Node dependencies
+```
+
+## Setup
+
+### Commander Server
+**Requirements:** Python 3.10+, pip
+
+```bash
 cd commander-server
-pip install websockets pynput
-cd ..
+pip install aiohttp websockets
+python server.py
+```
 
-# Setup the Captain Client directory and dependencies
-mkdir captain-client
+Tactical map available at: `http://localhost:8080/tactical`
+WebSocket on port `8081`
+
+### Captain Client
+**Requirements:** Node.js 20–22
+
+```bash
 cd captain-client
+npm install
+npm start
+```
 
-# 1. Clear any accidental caching or bad state
-npm cache clean --force
+Each captain sets their **Callsign**, **Ship**, **Colour**, and the **Commander's Tailscale IP** on the pre-connect screen before joining.
 
-# 2. Install all dependencies and force lifecycle scripts to download the binary
-npm install --foreground-scripts
+## Network
+All traffic runs over a private **Tailscale** mesh VPN.
+- Commander runs `server.py` — captains connect to the Commander's Tailscale IP.
+- No ports need to be forwarded. Anti-cheat safe (no inputs touch captain machines).
 
-# 3. Explicitly verify the Electron platform binary is downloaded
-npx electron-builder install-app-deps
+## Hotkeys (Captain Client)
+| Hotkey | Action |
+|--------|--------|
+| RAlt + Shift + M | Acknowledge formation order (1st press) → Ready / In Position (2nd press) |
+| RAlt + Shift + V | Toggle interactive mode on 3D overlay map |
 
-npm init -y
-npm install electron@^28.0.0
-node node_modules/electron/install.js  
-$env:ELECTRON_SKIP_BINARY_DOWNLOAD=""; npm rebuild electron --update-binary
-
-
-
----------------
-troubleshooting
-https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe
-https://nodejs.org/dist/v22.22.3/node-v22.22.3-x64.msi  USE 22.22.3 LTS! check box to install 3rd party apps including chocolatety
-
-
-
-# Force Electron to bypass the broken Node 24 install script and pull the binary directly
-$env:ELECTRON_SKIP_BINARY_DOWNLOAD="0"
-npx --node-version=22.11.0 npm install electron --force
-
-
-cd sc-fleet-sync\captain-client
-node node_modules/electron/install.js  
-$env:ELECTRON_SKIP_BINARY_DOWNLOAD=""; npm rebuild electron --update-binary
-
-
-
- py -m venv .venv
- .venv\Scripts\Activate.ps1
- (.venv) PS C:\dev\Fleet_Commander\sc-fleet-sync\commander-server> pip install aiohttp
-
-
- 

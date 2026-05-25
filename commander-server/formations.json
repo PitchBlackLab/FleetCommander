@@ -1,0 +1,307 @@
+{
+    "colors": {
+        "hud": "#00f0ff",
+        "lead": "#ff0055",
+        "escort": "#00ff66",
+        "grid": "#1a3d54",
+        "bg": "#01060f"
+    },
+    "activeFormation": "1",
+    "formations": {
+        "Vanguard-Wedge": {
+            "Titan-1": {
+                "ship": "Javelin",
+                "slot": "Lead",
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "size": "LARGE",
+                "shape": "WEDGE"
+            },
+            "Hammer-1": {
+                "ship": "Hammerhead",
+                "slot": "Port-Screen",
+                "x": -80,
+                "y": -60,
+                "z": 0,
+                "size": "MEDIUM",
+                "shape": "ARROW"
+            },
+            "Hammer-2": {
+                "ship": "Hammerhead",
+                "slot": "Starboard-Screen",
+                "x": 80,
+                "y": -60,
+                "z": 0,
+                "size": "MEDIUM",
+                "shape": "ARROW"
+            }
+        },
+        "Suppression-Line": {
+            "Titan-1": {
+                "ship": "Javelin",
+                "slot": "Lead",
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "size": "LARGE",
+                "shape": "WEDGE"
+            },
+            "Hammer-1": {
+                "ship": "Hammerhead",
+                "slot": "Port-Screen",
+                "x": -150,
+                "y": 0,
+                "z": 20,
+                "size": "MEDIUM",
+                "shape": "ARROW"
+            },
+            "Hammer-2": {
+                "ship": "Hammerhead",
+                "slot": "Starboard-Screen",
+                "x": 150,
+                "y": 0,
+                "z": -20,
+                "size": "MEDIUM",
+                "shape": "ARROW"
+            }
+        },
+        "Eshelon": {
+            "Titan-1": {
+                "ship": "Javelin",
+                "slot": "Lead",
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "size": "LARGE",
+                "shape": "WEDGE"
+            },
+            "Hammer-1": {
+                "ship": "Hammerhead",
+                "slot": "Port-Screen",
+                "x": -100,
+                "y": 70,
+                "z": 60,
+                "size": "MEDIUM",
+                "shape": "ARROW"
+            },
+            "Hammer-2": {
+                "ship": "Hammerhead",
+                "slot": "Starboard-Screen",
+                "x": 100,
+                "y": -70,
+                "z": -70,
+                "size": "MEDIUM",
+                "shape": "ARROW"
+            }
+        },
+        "Current": {
+            "Titan-1": {
+                "ship": "Borg",
+                "slot": "Lead",
+                "x": -20,
+                "y": -40,
+                "z": 20,
+                "size": "LARGE",
+                "shape": "BOX",
+                "color": "#00ffff"
+            },
+            "Hammer-1": {
+                "ship": "Hammerhead",
+                "slot": "Port-Screen",
+                "x": -140,
+                "y": -130,
+                "z": 60,
+                "size": "MEDIUM",
+                "shape": "ARROW"
+            },
+            "Hammer-2": {
+                "ship": "Hammerhead",
+                "slot": "Starboard-Screen",
+                "x": 100,
+                "y": -60,
+                "z": 60,
+                "size": "MEDIUM",
+                "shape": "ARROW"
+            },
+            "pete": {
+                "ship": "cube",
+                "slot": "renegade",
+                "x": -20,
+                "y": 140,
+                "z": -70,
+                "size": "LARGE",
+                "shape": "BOX",
+                "color": "#ff0000",
+                "inPosition": false
+            }
+        },
+        "1": {
+            "Titan-1": {
+                "ship": "Javelin",
+                "slot": "Lead",
+                "x": 0,
+                "y": -10,
+                "z": 70,
+                "size": "LARGE",
+                "shape": "WEDGE"
+            },
+            "Hammer-1": {
+                "ship": "Hammerhead",
+                "slot": "Port-Screen",
+                "x": -100,
+                "y": 70,
+                "z": 60,
+                "size": "MEDIUM",
+                "shape": "ARROW"
+            },
+            "Hammer-2": {
+                "ship": "Hammerhead",
+                "slot": "Starboard-Screen",
+                "x": 100,
+                "y": -70,
+                "z": -70,
+                "size": "MEDIUM",
+                "shape": "ARROW"
+            },
+            "sd": {
+                "ship": "Perseus (RSI)",
+                "slot": "Escort",
+                "x": 0,
+                "y": 110,
+                "z": 0,
+                "size": "MEDIUM",
+                "shape": "ARROW",
+                "color": "#00ff66",
+                "inPosition": false
+            },
+            "wsqfvbgnm": {
+                "ship": "325a (ORIGIN)",
+                "slot": "Escort",
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "size": "MEDIUM",
+                "shape": "ARROW",
+                "color": "#ffffff",
+                "inPosition": false
+            }
+        },
+        "2": {
+            "Titan-1": {
+                "ship": "Javelin",
+                "slot": "Lead",
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "size": "LARGE",
+                "shape": "WEDGE"
+            },
+            "Hammer-1": {
+                "ship": "Hammerhead",
+                "slot": "Port-Screen",
+                "x": -100,
+                "y": -60,
+                "z": -80,
+                "size": "MEDIUM",
+                "shape": "ARROW"
+            },
+            "Hammer-2": {
+                "ship": "Hammerhead",
+                "slot": "Starboard-Screen",
+                "x": 100,
+                "y": -30,
+                "z": 70,
+                "size": "MEDIUM",
+                "shape": "ARROW"
+            },
+            "sd": {
+                "ship": "Perseus (RSI)",
+                "slot": "Escort",
+                "x": 0,
+                "y": 110,
+                "z": 0,
+                "size": "MEDIUM",
+                "shape": "ARROW",
+                "color": "#00ff66",
+                "inPosition": false
+            },
+            "wsqfvbgnm": {
+                "ship": "325a (ORIGIN)",
+                "slot": "Escort",
+                "x": 0,
+                "y": -90,
+                "z": 20,
+                "size": "MEDIUM",
+                "shape": "ARROW",
+                "color": "#ffffff",
+                "inPosition": false
+            }
+        }
+    },
+    "assignments": {
+        "Titan-1": {
+            "ship": "Javelin",
+            "slot": "Lead",
+            "x": 0,
+            "y": -10,
+            "z": 70,
+            "size": "LARGE",
+            "shape": "WEDGE"
+        },
+        "Hammer-1": {
+            "ship": "Hammerhead",
+            "slot": "Port-Screen",
+            "x": -100,
+            "y": 70,
+            "z": 60,
+            "size": "MEDIUM",
+            "shape": "ARROW"
+        },
+        "Hammer-2": {
+            "ship": "Hammerhead",
+            "slot": "Starboard-Screen",
+            "x": 100,
+            "y": -70,
+            "z": -70,
+            "size": "MEDIUM",
+            "shape": "ARROW"
+        },
+        "sd": {
+            "ship": "Perseus (RSI)",
+            "slot": "Escort",
+            "x": 0,
+            "y": 110,
+            "z": 0,
+            "size": "MEDIUM",
+            "shape": "ARROW",
+            "color": "#00ff66",
+            "inPosition": false
+        },
+        "wsqfvbgnm": {
+            "ship": "325a (ORIGIN)",
+            "slot": "Escort",
+            "x": 0,
+            "y": -240,
+            "z": 40,
+            "size": "MEDIUM",
+            "shape": "ARROW",
+            "color": "#ffffff",
+            "inPosition": false
+        }
+    },
+    "shipLibrary": {
+        "Borg": {
+            "shape": "BOX",
+            "scale": 3,
+            "color": "#8000ff"
+        }
+    },
+    "gridConfig": {
+        "squaresX": 4,
+        "squaresY": 4,
+        "squaresZ": 4,
+        "squareSizeMeters": 100
+    },
+    "uiLayout": {}
+}
