@@ -1,116 +1,1031 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <meta charset="UTF-8">
     <style>
-        body { 
-            margin: 0; 
-            padding: 0; 
-            width: 100vw; 
-            height: 100vh; 
-            overflow: hidden; 
-            font-family: sans-serif; 
-            background: transparent; 
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            width: 100vw; height: 100vh; overflow: hidden;
+            font-family: 'Courier New', Courier, monospace;
+            background: transparent;
         }
-        #hud-container { 
-            position: absolute; 
-            top: 8%; 
-            left: 50%; 
-            transform: translateX(-50%); 
-            background: rgba(0, 10, 20, 0.75); 
-            border: 1px solid #00f0ff; 
-            border-radius: 8px; 
-            padding: 15px 30px; 
-            color: #00f0ff; 
-            text-align: center; 
-            box-shadow: 0 0 15px rgba(0, 240, 255, 0.3); 
-            min-width: 320px; 
+
+        /* ── PRE-CONNECT SETUP SCREEN ── */
+        #setup-screen {
+            position: absolute; inset: 0;
+            background: rgba(1, 6, 15, 0.96);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 999;
         }
-        .vector-indicator { 
-            font-size: 22px; 
-            font-weight: bold; 
-            text-transform: uppercase; 
-            margin-top: 5px; 
-            color: #fff; 
+        #setup-box {
+            border: 1px solid #00f0ff;
+            border-radius: 6px;
+            padding: 28px 32px;
+            background: rgba(2, 12, 30, 0.98);
+            box-shadow: 0 0 30px rgba(0,240,255,0.25);
+            width: 380px;
+            display: flex; flex-direction: column; gap: 14px;
         }
-        .coordinate-matrix {
-            margin-top: 8px;
-            font-family: monospace;
-            font-size: 13px;
+        #setup-box h1 {
+            font-size: 13px; letter-spacing: 3px;
+            color: #ff0055; text-align: center;
+            border-bottom: 1px solid rgba(0,240,255,0.2);
+            padding-bottom: 12px;
+        }
+        .field-group { display: flex; flex-direction: column; gap: 4px; }
+        .field-group label {
+            font-size: 9px; letter-spacing: 2px; color: #888;
+        }
+        .field-group input,
+        .field-group select {
+            background: #010b18;
+            border: 1px solid rgba(0,240,255,0.35);
+            color: #fff;
+            padding: 7px 9px;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            border-radius: 2px;
+            width: 100%;
+        }
+        .field-group input:focus,
+        .field-group select:focus {
+            outline: none; border-color: #00f0ff;
+            box-shadow: 0 0 6px rgba(0,240,255,0.3);
+        }
+        .color-grid {
+            display: flex; gap: 8px; margin-top: 2px;
+        }
+        .color-swatch {
+            width: 32px; height: 32px; border-radius: 3px;
+            border: 2px solid transparent; cursor: pointer;
+            transition: transform 0.1s;
+            flex-shrink: 0;
+        }
+        .color-swatch:hover { transform: scale(1.15); }
+        .color-swatch.selected { border-color: #ffffff; }
+        #connect-btn {
+            background: #041a3a;
+            border: 1px solid #00f0ff;
+            color: #00f0ff;
+            padding: 9px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            text-transform: uppercase;
+            border-radius: 2px;
+            letter-spacing: 2px;
+            margin-top: 4px;
+        }
+        #connect-btn:hover { background: #00f0ff; color: #000; font-weight: bold; }
+        #connect-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        #status-msg { font-size: 10px; color: #ff0055; text-align: center; min-height: 14px; }
+
+        /* ── LIVE HUD OVERLAY ── */
+        #hud-container {
+            position: absolute;
+            top: 8%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 10, 20, 0.80);
+            border: 1px solid #00f0ff;
+            border-radius: 8px;
+            padding: 14px 28px;
+            color: #00f0ff;
+            text-align: center;
+            box-shadow: 0 0 18px rgba(0,240,255,0.3);
+            min-width: 340px;
+            display: none;
+        }
+        .hud-header {
+            font-size: 9px; letter-spacing: 3px; color: #888; margin-bottom: 2px;
+        }
+        .hud-callsign {
+            font-size: 14px; font-weight: bold; color: #fff;
+            border-bottom: 1px solid rgba(0,240,255,0.2); padding-bottom: 6px; margin-bottom: 6px;
+        }
+        .callsign-color-dot {
+            display: inline-block; width: 10px; height: 10px;
+            border-radius: 50%; margin-right: 6px; vertical-align: middle;
+        }
+        #vector-display {
+            font-size: 20px; font-weight: bold; text-transform: uppercase;
+            margin: 4px 0; color: #fff;
+        }
+        #vector-display.active { color: #ff0055; text-shadow: 0 0 10px #ff0055; }
+        #matrix-display {
+            margin-top: 6px; font-family: monospace; font-size: 12px; color: #888;
+            border-top: 1px solid rgba(0,240,255,0.2); padding-top: 6px;
+        }
+        #conn-status {
+            font-size: 9px; margin-top: 6px; letter-spacing: 1px;
+        }
+        .status-live   { color: #00ff66; }
+        .status-dead   { color: #ff0055; }
+        .status-retry  { color: #ffaa00; }
+
+        /* ── TACTICAL MINI-MAP PANEL ── */
+        #map-panel {
+            position: absolute;
+            bottom: 80px;
+            right: 12px;
+            width: 270px;
+            background: rgba(0, 8, 20, 0.88);
+            border: 1px solid #00f0ff;
+            border-radius: 5px;
+            box-shadow: 0 0 14px rgba(0,240,255,0.2);
+            display: none;
+            user-select: none;
+            z-index: 100;
+        }
+        #map-titlebar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 4px 8px;
+            border-bottom: 1px solid rgba(0,240,255,0.2);
+            cursor: move;
+            font-size: 9px;
+            letter-spacing: 2px;
+            color: #00f0ff;
+        }
+        #map-titlebar span { pointer-events: none; }
+        #map-cfg-btn {
+            background: none;
+            border: none;
+            color: #555;
+            cursor: pointer;
+            font-size: 12px;
+            line-height: 1;
+            padding: 0 2px;
+            transition: color 0.15s;
+        }
+        #map-cfg-btn:hover { color: #00f0ff; }
+        #map-canvas {
+            display: block;
+            width: 260px;
+            height: 200px;
+            margin: 5px auto;
+            cursor: default;
+        }
+        #map-panel.interactive #map-canvas { cursor: crosshair; }
+        #map-resize-handle {
+            position: absolute;
+            bottom: 0; right: 0;
+            width: 14px; height: 14px;
+            cursor: se-resize;
+            background: linear-gradient(135deg, transparent 40%, rgba(0,240,255,0.4) 40%);
+            border-bottom-right-radius: 4px;
+        }
+
+        /* ── ORDER STATE BAR ── */
+        #order-state-bar {
+            position: absolute;
+            bottom: 14px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 8, 20, 0.92);
+            border: 1px solid #ffdd00;
+            border-radius: 4px;
+            padding: 5px 18px;
+            font-size: 10px;
+            letter-spacing: 2px;
+            color: #ffdd00;
+            pointer-events: none;
+            display: none;
+            white-space: nowrap;
+            z-index: 110;
+        }
+        #order-state-bar.state-ack   { border-color: #ffaa00; color: #ffaa00; }
+        #order-state-bar.state-ready { border-color: #00ff66; color: #00ff66; }
+
+        /* ── MAP CONFIG PANEL ── */
+        #map-config-panel {
+            position: absolute;
+            bottom: 100%; right: 0;
+            margin-bottom: 4px;
+            background: rgba(0, 8, 20, 0.97);
+            border: 1px solid rgba(0,240,255,0.35);
+            border-radius: 4px;
+            padding: 10px 12px;
+            width: 180px;
+            display: none;
+            z-index: 200;
+            font-size: 10px;
             color: #888;
-            border-top: 1px solid rgba(0, 240, 255, 0.2);
-            padding-top: 6px;
         }
-        .active { 
-            color: #ff0055; 
-            text-shadow: 0 0 10px #ff0055; 
+        #map-config-panel .cfg-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 7px;
+            gap: 6px;
         }
+        #map-config-panel label {
+            font-size: 9px; letter-spacing: 1px;
+            color: #666; white-space: nowrap;
+        }
+        #map-config-panel input[type="number"],
+        #map-config-panel input[type="range"] {
+            background: #010b18;
+            border: 1px solid rgba(0,240,255,0.3);
+            color: #fff;
+            font-family: 'Courier New', monospace;
+            font-size: 10px;
+            border-radius: 2px;
+        }
+        #map-config-panel input[type="number"] { width: 70px; padding: 3px 5px; }
+        #map-config-panel input[type="range"]  { width: 80px; }
+        .cfg-btn {
+            background: #041a3a;
+            border: 1px solid rgba(0,240,255,0.35);
+            color: #00f0ff;
+            font-family: 'Courier New', monospace;
+            font-size: 9px; letter-spacing: 1px;
+            padding: 4px 8px;
+            cursor: pointer; border-radius: 2px;
+            text-transform: uppercase;
+        }
+        .cfg-btn:hover { background: rgba(0,240,255,0.1); }
     </style>
 </head>
 <body>
-    <div id="hud-container">
-        <div style="font-size: 10px; letter-spacing: 2px;">COMMANDER FLEET VECTOR</div>
-        <div id="vector-display" class="vector-indicator">STEADY AHEAD</div>
-        
-        <!-- Added for 3D Target Matrix Tracking -->
-        <div id="matrix-display" class="coordinate-matrix">TARGET NODE ASSIGNMENT: UNLINKED</div>
+
+<!-- ── SETUP SCREEN ── -->
+<div id="setup-screen">
+    <div id="setup-box">
+        <h1>CAPTAIN REGISTRATION</h1>
+
+        <div class="field-group">
+            <label>CALLSIGN</label>
+            <input type="text" id="inp-callsign" placeholder="Hammer-1" maxlength="20">
+        </div>
+
+        <div class="field-group">
+            <label>SHIP</label>
+            <select id="inp-ship"></select>
+        </div>
+
+        <div class="field-group">
+            <label>TOKEN COLOUR</label>
+            <div class="color-grid" id="color-grid"></div>
+        </div>
+
+        <div class="field-group">
+            <label>COMMANDER IP (TAILSCALE)</label>
+            <input type="text" id="inp-ip" placeholder="100.x.x.x" value="127.0.0.1">
+        </div>
+
+        <div id="status-msg"></div>
+
+        <button id="connect-btn" onclick="doConnect()">CONNECT TO FLEET</button>
     </div>
-    <script>
-        // Set to "127.0.0.1" for single-computer tests, or use the Commander's Tailscale IP
-        const COMMANDER_TAILSCALE_IP = "127.0.0.1";
-        
-        // Define this specific client instance's callsign identifier name
-        const MY_CALLSIGN = "Hammer-1"; 
+</div>
 
-        const ws = new WebSocket("ws://" + COMMANDER_TAILSCALE_IP + ":8081");
-        const vectorDisplay = document.getElementById('vector-display');
-        const matrixDisplay = document.getElementById('matrix-display');
+<!-- ── TACTICAL MINI-MAP ── -->
+<div id="map-panel">
+    <div id="map-titlebar">
+        <span>⬡ TACTICAL</span>
+        <button id="map-cfg-btn" onclick="toggleMapConfig()">⚙</button>
+    </div>
+    <canvas id="map-canvas" width="260" height="200"></canvas>
+    <div id="map-resize-handle"></div>
+    <div id="map-config-panel">
+        <div class="cfg-row">
+            <label>RANGE (m)</label>
+            <input type="number" id="cfg-nearby-range" value="500" min="50" max="5000" step="50">
+        </div>
+        <div class="cfg-row">
+            <label>OPACITY</label>
+            <input type="range" id="cfg-map-opacity" min="20" max="100" value="88">
+        </div>
+        <div class="cfg-row" style="justify-content:flex-end; gap:6px; margin-bottom:0;">
+            <button class="cfg-btn" onclick="closeMapConfig()">CLOSE</button>
+            <button class="cfg-btn" onclick="saveMapConfig()">SAVE</button>
+        </div>
+    </div>
+</div>
 
-        // Phase 2 Handshake: Register identity with the backend immediately
-        ws.onopen = () => {
-            ws.send(JSON.stringify({
-                "type": "INITIALIZE_CAPTAIN",
-                "callsign": MY_CALLSIGN
-            }));
+<!-- ── ORDER STATE BAR ── -->
+<div id="order-state-bar"></div>
+
+<!-- ── LIVE HUD ── -->
+<div id="hud-container">
+    <div class="hud-header">COMMANDER FLEET VECTOR</div>
+    <div class="hud-callsign">
+        <span class="callsign-color-dot" id="hud-dot"></span>
+        <span id="hud-callsign-label">---</span>
+        &nbsp;·&nbsp;
+        <span id="hud-ship-label" style="color:#888; font-size:11px;"></span>
+    </div>
+    <div id="vector-display">STEADY AHEAD</div>
+    <div id="matrix-display">TARGET NODE ASSIGNMENT: UNLINKED</div>
+    <div id="conn-status" class="status-live">● CONNECTED</div>
+</div>
+
+<script>
+// ── SHIP DATABASE (Star Citizen, lengths in metres) ──────────────────────────
+// Format: { model, mfr, length }  — displayed as "Model (MFR)  (Xm)"
+const SC_SHIPS = [
+    { model: "100i",                   mfr: "ORIGIN",    length: 22  },
+    { model: "300i",                   mfr: "ORIGIN",    length: 25  },
+    { model: "315p",                   mfr: "ORIGIN",    length: 25  },
+    { model: "325a",                   mfr: "ORIGIN",    length: 25  },
+    { model: "350r",                   mfr: "ORIGIN",    length: 25  },
+    { model: "400i",                   mfr: "ORIGIN",    length: 55  },
+    { model: "600i Explorer",          mfr: "ORIGIN",    length: 91  },
+    { model: "85X",                    mfr: "ORIGIN",    length: 12  },
+    { model: "890 Jump",               mfr: "ORIGIN",    length: 211 },
+    { model: "A2 Hercules",            mfr: "CRUSADER",  length: 94  },
+    { model: "Apollo Medivac",         mfr: "RSI",       length: 62  },
+    { model: "Apollo Triage",          mfr: "RSI",       length: 62  },
+    { model: "Ares Inferno",           mfr: "CRUSADER",  length: 35  },
+    { model: "Ares Ion",               mfr: "CRUSADER",  length: 35  },
+    { model: "Arrastra",               mfr: "RSI",       length: 170 },
+    { model: "Arrow",                  mfr: "ANVIL",     length: 16  },
+    { model: "Asgard",                 mfr: "ANVIL",     length: 320 },
+    { model: "Aurora CL",              mfr: "RSI",       length: 18  },
+    { model: "Aurora ES",              mfr: "RSI",       length: 18  },
+    { model: "Aurora LN",              mfr: "RSI",       length: 18  },
+    { model: "Aurora MR",              mfr: "RSI",       length: 18  },
+    { model: "Avenger Stalker",        mfr: "AEGIS",     length: 23  },
+    { model: "Avenger Titan",          mfr: "AEGIS",     length: 23  },
+    { model: "Avenger Warlock",        mfr: "AEGIS",     length: 23  },
+    { model: "Banu Defender",          mfr: "BANU",      length: 37  },
+    { model: "Banu Merchantman",       mfr: "BANU",      length: 244 },
+    { model: "Bengal",                 mfr: "RSI",       length: 990 },
+    { model: "Buccaneer",              mfr: "DRAKE",     length: 20  },
+    { model: "C1 Spirit",              mfr: "CRUSADER",  length: 35  },
+    { model: "C2 Hercules",            mfr: "CRUSADER",  length: 94  },
+    { model: "C8 Pisces",              mfr: "ANVIL",     length: 12  },
+    { model: "C8X Pisces Expedition",  mfr: "ANVIL",     length: 12  },
+    { model: "Carrack",                mfr: "ANVIL",     length: 126 },
+    { model: "Caterpillar",            mfr: "DRAKE",     length: 155 },
+    { model: "Constellation Andromeda",mfr: "RSI",       length: 61  },
+    { model: "Constellation Aquila",   mfr: "RSI",       length: 61  },
+    { model: "Constellation Phoenix",  mfr: "RSI",       length: 61  },
+    { model: "Constellation Taurus",   mfr: "RSI",       length: 61  },
+    { model: "Corsair",                mfr: "DRAKE",     length: 57  },
+    { model: "Crucible",               mfr: "ANVIL",     length: 96  },
+    { model: "Cutlass Black",          mfr: "DRAKE",     length: 30  },
+    { model: "Cutlass Blue",           mfr: "DRAKE",     length: 30  },
+    { model: "Cutlass Red",            mfr: "DRAKE",     length: 30  },
+    { model: "Cutlass Steel",          mfr: "DRAKE",     length: 30  },
+    { model: "Cutter",                 mfr: "DRAKE",     length: 21  },
+    { model: "Dragonfly",              mfr: "DRAKE",     length: 6   },
+    { model: "E1 Spirit",              mfr: "CRUSADER",  length: 35  },
+    { model: "Eclipse",                mfr: "AEGIS",     length: 31  },
+    { model: "Endeavor",               mfr: "MISC",      length: 195 },
+    { model: "Expanse",                mfr: "MISC",      length: 100 },
+    { model: "F7A Hornet Mk II",       mfr: "ANVIL",     length: 24  },
+    { model: "F7C Hornet Mk II",       mfr: "ANVIL",     length: 24  },
+    { model: "F7C-M Super Hornet",     mfr: "ANVIL",     length: 24  },
+    { model: "F8C Lightning",          mfr: "ANVIL",     length: 28  },
+    { model: "Freelancer",             mfr: "MISC",      length: 37  },
+    { model: "Freelancer DUR",         mfr: "MISC",      length: 37  },
+    { model: "Freelancer MAX",         mfr: "MISC",      length: 37  },
+    { model: "Freelancer MIS",         mfr: "MISC",      length: 37  },
+    { model: "Galaxy",                 mfr: "RSI",       length: 180 },
+    { model: "Gladiator",              mfr: "ANVIL",     length: 27  },
+    { model: "Gladius",                mfr: "AEGIS",     length: 20  },
+    { model: "Hammerhead",             mfr: "AEGIS",     length: 213 },
+    { model: "Hull A",                 mfr: "MISC",      length: 46  },
+    { model: "Hull B",                 mfr: "MISC",      length: 61  },
+    { model: "Hull C",                 mfr: "MISC",      length: 148 },
+    { model: "Hull D",                 mfr: "MISC",      length: 222 },
+    { model: "Hull E",                 mfr: "MISC",      length: 394 },
+    { model: "Idris-K",                mfr: "AEGIS",     length: 233 },
+    { model: "Idris-M",                mfr: "AEGIS",     length: 233 },
+    { model: "Idris-P",                mfr: "AEGIS",     length: 233 },
+    { model: "Javelin",                mfr: "AEGIS",     length: 480 },
+    { model: "Kraken",                 mfr: "DRAKE",     length: 394 },
+    { model: "Kraken Privateer",       mfr: "DRAKE",     length: 394 },
+    { model: "M2 Hercules",            mfr: "CRUSADER",  length: 94  },
+    { model: "Mantis",                 mfr: "RSI",       length: 30  },
+    { model: "Nautilus",               mfr: "AEGIS",     length: 249 },
+    { model: "Odyssey",                mfr: "RSI",       length: 249 },
+    { model: "Perseus",                mfr: "RSI",       length: 155 },
+    { model: "Polaris",                mfr: "RSI",       length: 166 },
+    { model: "Prospector",             mfr: "MISC",      length: 25  },
+    { model: "Razor",                  mfr: "MISC",      length: 16  },
+    { model: "Reclaimer",              mfr: "AEGIS",     length: 158 },
+    { model: "Redeemer",               mfr: "AEGIS",     length: 37  },
+    { model: "Retaliator",             mfr: "AEGIS",     length: 107 },
+    { model: "Sabre",                  mfr: "AEGIS",     length: 25  },
+    { model: "Sabre Comet",            mfr: "AEGIS",     length: 25  },
+    { model: "San'tok.yāi",            mfr: "AOPOA",     length: 37  },
+    { model: "Scorpius",               mfr: "RSI",       length: 32  },
+    { model: "Starfarer",              mfr: "MISC",      length: 155 },
+    { model: "Starfarer Gemini",       mfr: "MISC",      length: 155 },
+    { model: "Terrapin",               mfr: "ANVIL",     length: 29  },
+    { model: "Vanguard Harbinger",     mfr: "AEGIS",     length: 38  },
+    { model: "Vanguard Hoplite",       mfr: "AEGIS",     length: 38  },
+    { model: "Vanguard Sentinel",      mfr: "AEGIS",     length: 38  },
+    { model: "Vanguard Warden",        mfr: "AEGIS",     length: 38  },
+    { model: "Vulcan",                 mfr: "MISC",      length: 55  },
+    { model: "Vulture",                mfr: "DRAKE",     length: 25  },
+];
+
+// Sort alphabetically by model name
+SC_SHIPS.sort((a, b) => a.model.localeCompare(b.model));
+
+const COLOURS = [
+    { label: "Cyan",   hex: "#00f0ff" },
+    { label: "Green",  hex: "#00ff66" },
+    { label: "Yellow", hex: "#ffdd00" },
+    { label: "Red",    hex: "#ff3333" },
+    { label: "Blue",   hex: "#3399ff" },
+    { label: "White",  hex: "#ffffff" },
+];
+
+// ── SETUP SCREEN BUILD ───────────────────────────────────────────────────────
+
+let selectedColor = COLOURS[1].hex; // default green
+
+function buildSetupUI() {
+    // Ship select — "Model (MFR)  (Xm)", value is "Model (MFR)" for server
+    const sel = document.getElementById('inp-ship');
+    SC_SHIPS.forEach(s => {
+        const opt = document.createElement('option');
+        opt.value = `${s.model} (${s.mfr})`;
+        opt.textContent = `${s.model} (${s.mfr})  —  ${s.length}m`;
+        sel.appendChild(opt);
+    });
+    // Default to Hammerhead
+    sel.value = "Hammerhead (AEGIS)";
+
+    // Color swatches
+    const grid = document.getElementById('color-grid');
+    COLOURS.forEach(c => {
+        const sw = document.createElement('div');
+        sw.className = 'color-swatch' + (c.hex === selectedColor ? ' selected' : '');
+        sw.style.background = c.hex;
+        sw.title = c.label;
+        sw.onclick = () => {
+            selectedColor = c.hex;
+            document.querySelectorAll('.color-swatch').forEach(el => el.classList.remove('selected'));
+            sw.classList.add('selected');
         };
+        grid.appendChild(sw);
+    });
+}
 
-        ws.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            
-            // 1) Handle Real-Time Flight Vector Streams
-            if (data.type === "STATE_UPDATE" || data.type === "SYNC_ALL") {
-                const vectors = data.vectors || data.state;
-                if (vectors) {
-                    let actions = [];
-                    if (vectors.yaw !== "NEUTRAL") actions.push("STEERING " + vectors.yaw);
-                    if (vectors.pitch !== "NEUTRAL") actions.push("PITCHING " + vectors.pitch);
-                    if (vectors.roll !== "NEUTRAL") actions.push(vectors.roll.replace('_', ' '));
-                    if (vectors.vertical && vectors.vertical !== "NEUTRAL") actions.push(vectors.vertical.replace('_', ' '));
-                    
-                    if (actions.length > 0) { 
-                        vectorDisplay.innerText = actions.join(' | '); 
-                        vectorDisplay.classList.add('active'); 
-                    } else { 
-                        vectorDisplay.innerText = "STEADY AHEAD"; 
-                        vectorDisplay.classList.remove('active'); 
-                    }
+buildSetupUI();
+
+// ── WEBSOCKET CONNECTION ─────────────────────────────────────────────────────
+
+let ws = null;
+let myCallsign  = "";
+let myShip      = "";
+let myColor     = "";
+let reconnectDelay = 1000;
+let reconnectTimer = null;
+let intentionalDisconnect = false;
+
+// ── MAP & ORDER STATE ─────────────────────────────────────────────────────────
+let assignments   = {};
+let captainStates = {};
+let nearbyRange   = 500;
+let pendingOrder  = { active: false, targets: {}, paths: {} };
+let myOrderState  = 'IDLE'; // IDLE → ACKNOWLEDGED → READY
+let gridConfig    = { squaresX: 4, squaresY: 4, squaresZ: 2, squareSizeMeters: 100 };
+
+// Map camera & panel interaction
+let mapYaw          = 0.3;
+let mapPitch        = -0.4;
+let mapZoom         = 1.0;
+let mapInteractive  = false;
+let mapCamDrag      = false;
+let mapLastMouse    = { x: 0, y: 0 };
+let mapPanelDrag    = null;
+let mapPanelResize  = null;
+let camViewTimer    = null;
+let _mapLoopStarted = false;
+
+function setStatus(msg, cls) {
+    const el = document.getElementById('status-msg');
+    el.textContent = msg;
+    el.style.color = cls === 'ok' ? '#00ff66' : cls === 'warn' ? '#ffaa00' : '#ff0055';
+}
+
+function setHudConnStatus(msg, cls) {
+    const el = document.getElementById('conn-status');
+    el.textContent = msg;
+    el.className = 'status-' + cls;
+}
+
+function doConnect() {
+    const callsign = document.getElementById('inp-callsign').value.trim();
+    const ship     = document.getElementById('inp-ship').value;
+    const ip       = document.getElementById('inp-ip').value.trim();
+
+    if (!callsign) { setStatus('Callsign required.', 'err'); return; }
+    if (!ip)       { setStatus('Commander IP required.', 'err'); return; }
+
+    myCallsign = callsign;
+    myShip     = ship;
+    myColor    = selectedColor;
+
+    document.getElementById('connect-btn').disabled = true;
+    setStatus('Connecting...', 'warn');
+    intentionalDisconnect = false;
+
+    openWebSocket(ip);
+}
+
+function openWebSocket(ip) {
+    if (ws) { ws.onclose = null; ws.close(); }
+
+    ws = new WebSocket(`ws://${ip}:8081`);
+
+    ws.onopen = () => {
+        reconnectDelay = 1000;
+        ws.send(JSON.stringify({
+            type: "INITIALIZE_CAPTAIN",
+            callsign: myCallsign,
+            ship: myShip,
+            color: myColor,
+            slot: "Escort"
+        }));
+        showHUD();
+    };
+
+    ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+
+        if (data.type === "KICKED") {
+            intentionalDisconnect = true;
+            hideHUD("KICKED BY COMMANDER");
+            return;
+        }
+
+        // Vector update
+        if (data.type === "STATE_UPDATE" || data.type === "SYNC_ALL") {
+            const vectors = data.vectors || data.state;
+            updateVectorDisplay(vectors);
+        }
+
+        // Position update
+        if (data.type === "FORMATION_SHIFT" || data.type === "SYNC_ALL") {
+            if (data.assignments) assignments = data.assignments;
+            const asgn = data.assignments;
+            if (asgn && asgn[myCallsign]) {
+                const t = asgn[myCallsign];
+                document.getElementById('matrix-display').innerHTML =
+                    `ASSIGNED POS: <span style="color:#00f0ff;">X:${t.x} | Y:${t.y} | Z:${t.z}</span>`;
+                // Commander can override our color / ship
+                if (t.color && t.color !== myColor) {
+                    myColor = t.color;
+                    document.getElementById('hud-dot').style.background = myColor;
+                }
+                if (t.ship && t.ship !== myShip) {
+                    myShip = t.ship;
+                    document.getElementById('hud-ship-label').textContent = myShip;
                 }
             }
+        }
 
-            // 2) Handle Live 3D Target Matrix Coordinate Shift Packets
-            if (data.type === "FORMATION_SHIFT" || data.type === "SYNC_ALL") {
-                const assignments = data.assignments;
-                if (assignments && assignments[MY_CALLSIGN]) {
-                    const myTarget = assignments[MY_CALLSIGN];
-                    matrixDisplay.innerHTML = "ASSIGNED POS: <span style='color: #00f0ff;'>X: " + myTarget.x + " | Y: " + myTarget.y + " | Z: " + myTarget.z + "</span>";
+        // Commander override
+        if (data.type === "CAPTAIN_JOINED" && data.assignments && data.assignments[myCallsign]) {
+            const t = data.assignments[myCallsign];
+            if (t.color) { myColor = t.color; document.getElementById('hud-dot').style.background = myColor; }
+            if (t.ship)  { myShip  = t.ship;  document.getElementById('hud-ship-label').textContent = myShip; }
+        }
+
+        // Extended sync: map state, captain states, grid, active order
+        if (data.type === "SYNC_ALL") {
+            if (data.captainStates) captainStates = data.captainStates;
+            if (data.nearbyRange  !== undefined) nearbyRange = data.nearbyRange;
+            if (data.gridConfig)  gridConfig = data.gridConfig;
+            if (data.pendingOrder) pendingOrder = data.pendingOrder;
+            if (data.captainStates && data.captainStates[myCallsign]) {
+                myOrderState = data.captainStates[myCallsign];
+                updateOrderStateUI();
+            }
+        }
+
+        // Formation order issued by commander
+        if (data.type === "FORMATION_ORDER") {
+            pendingOrder = data;
+            myOrderState = 'IDLE';
+            updateOrderStateUI();
+        }
+
+        // Captain acknowledged or reported in-position
+        if (data.type === "CAPTAIN_STATE_CHANGE") {
+            if (data.callsign && data.state) {
+                captainStates[data.callsign] = data.state;
+                if (data.callsign === myCallsign) {
+                    myOrderState = data.state;
+                    updateOrderStateUI();
                 }
             }
-        };
+        }
 
-        ws.onerror = () => { 
-            vectorDisplay.innerText = "DISCONNECTED FROM MESH"; 
-            vectorDisplay.style.color = "#ff0055"; 
-            matrixDisplay.innerText = "TARGET NODE ASSIGNMENT: UNLINKED";
-        };
-    </script>
+        // Formation complete — clear order state
+        if (data.type === "FORMATION_COMPLETE") {
+            pendingOrder = { active: false, targets: {}, paths: {} };
+            myOrderState = 'IDLE';
+            updateOrderStateUI();
+        }
+    };
+
+    ws.onerror = () => {
+        setHudConnStatus('● ERROR', 'dead');
+    };
+
+    ws.onclose = () => {
+        if (intentionalDisconnect) return;
+        setHudConnStatus(`● RECONNECTING (${(reconnectDelay/1000).toFixed(1)}s)...`, 'retry');
+        reconnectTimer = setTimeout(() => {
+            reconnectDelay = Math.min(reconnectDelay * 2, 30000);
+            const savedIp = document.getElementById('inp-ip').value.trim();
+            openWebSocket(savedIp);
+        }, reconnectDelay);
+    };
+}
+
+function updateVectorDisplay(vectors) {
+    if (!vectors) return;
+    const disp = document.getElementById('vector-display');
+    const actions = [];
+    if (vectors.yaw      !== "NEUTRAL") actions.push("STEERING " + vectors.yaw);
+    if (vectors.pitch    !== "NEUTRAL") actions.push("PITCHING " + vectors.pitch);
+    if (vectors.roll     !== "NEUTRAL") actions.push(vectors.roll.replace('_',' '));
+    if (vectors.vertical !== "NEUTRAL") actions.push(vectors.vertical.replace('_',' '));
+
+    if (actions.length > 0) {
+        disp.textContent = actions.join(' | ');
+        disp.classList.add('active');
+    } else {
+        disp.textContent = "STEADY AHEAD";
+        disp.classList.remove('active');
+    }
+}
+
+// ── BEZIER HELPER ─────────────────────────────────────────────────────────────
+function bezierPoint3D(t, p0, c1, c2, p1) {
+    const mt = 1 - t;
+    return {
+        x: mt*mt*mt*p0.x + 3*mt*mt*t*c1.x + 3*mt*t*t*c2.x + t*t*t*p1.x,
+        y: mt*mt*mt*p0.y + 3*mt*mt*t*c1.y + 3*mt*t*t*c2.y + t*t*t*p1.y,
+        z: mt*mt*mt*p0.z + 3*mt*mt*t*c1.z + 3*mt*t*t*c2.z + t*t*t*p1.z,
+    };
+}
+
+// ── MAP PROJECTION ────────────────────────────────────────────────────────────
+function projectMap(wx, wy, wz) {
+    const canvas = document.getElementById('map-canvas');
+    const cx = canvas.width / 2, cy = canvas.height / 2;
+    // Yaw rotation (around world vertical)
+    const cosY = Math.cos(mapYaw), sinY = Math.sin(mapYaw);
+    const x1 = wx * cosY - wy * sinY;
+    const y1 = wx * sinY + wy * cosY;
+    const z1 = wz;
+    // Pitch rotation
+    const cosP = Math.cos(mapPitch), sinP = Math.sin(mapPitch);
+    const x2 = x1;
+    const y2 = y1 * cosP - z1 * sinP;
+    const z2 = y1 * sinP + z1 * cosP;
+    const fov = 180 * mapZoom;
+    const dist = Math.max(y2 + 600, 1);
+    return { x: cx + x2 * (fov / dist), y: cy - z2 * (fov / dist), depth: y2 };
+}
+
+// ── THROTTLED VIEW UPDATE ─────────────────────────────────────────────────────
+function throttleSendView() {
+    if (camViewTimer) return;
+    camViewTimer = setTimeout(() => {
+        camViewTimer = null;
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'CAPTAIN_VIEW_UPDATE',
+                callsign: myCallsign, mapYaw, mapPitch, mapZoom }));
+        }
+    }, 200);
+}
+
+// ── ORDER STATE BAR ───────────────────────────────────────────────────────────
+function updateOrderStateUI() {
+    const bar = document.getElementById('order-state-bar');
+    if (!pendingOrder.active || myOrderState === 'IDLE') {
+        bar.style.display = 'none';
+        return;
+    }
+    bar.style.display = 'block';
+    if (myOrderState === 'ACKNOWLEDGED') {
+        bar.className = 'state-ack';
+        bar.textContent = '⚑ ORDER ACKNOWLEDGED  —  PRESS RAlt+Shift+M WHEN IN POSITION';
+    } else if (myOrderState === 'READY') {
+        bar.className = 'state-ready';
+        bar.textContent = '✓ IN POSITION — AWAITING FLEET';
+    }
+}
+
+// ── HOTKEY HANDLER ────────────────────────────────────────────────────────────
+function handleHotkey(key) {
+    if (key === 'ACK_READY') {
+        if (!pendingOrder.active) return;
+        if (myOrderState === 'IDLE') {
+            myOrderState = 'ACKNOWLEDGED';
+            if (ws && ws.readyState === WebSocket.OPEN)
+                ws.send(JSON.stringify({ type: 'CAPTAIN_STATE_CHANGE', callsign: myCallsign, state: 'ACKNOWLEDGED' }));
+        } else if (myOrderState === 'ACKNOWLEDGED') {
+            myOrderState = 'READY';
+            if (ws && ws.readyState === WebSocket.OPEN)
+                ws.send(JSON.stringify({ type: 'CAPTAIN_STATE_CHANGE', callsign: myCallsign, state: 'READY' }));
+        }
+        updateOrderStateUI();
+    } else if (key === 'TOGGLE_MAP') {
+        mapInteractive = !mapInteractive;
+        const panel = document.getElementById('map-panel');
+        if (mapInteractive) {
+            panel.classList.add('interactive');
+            if (window.electronAPI) window.electronAPI.setIgnoreMouse(false);
+        } else {
+            panel.classList.remove('interactive');
+            if (window.electronAPI) window.electronAPI.setIgnoreMouse(true);
+        }
+    }
+}
+
+// ── MAP CONFIG ────────────────────────────────────────────────────────────────
+function toggleMapConfig() {
+    const cfg = document.getElementById('map-config-panel');
+    cfg.style.display = cfg.style.display === 'block' ? 'none' : 'block';
+}
+function closeMapConfig() {
+    document.getElementById('map-config-panel').style.display = 'none';
+}
+function saveMapConfig() {
+    const rangeVal = parseInt(document.getElementById('cfg-nearby-range').value) || 500;
+    nearbyRange = Math.max(50, Math.min(5000, rangeVal));
+    document.getElementById('cfg-nearby-range').value = nearbyRange;
+    const opVal = parseInt(document.getElementById('cfg-map-opacity').value) || 88;
+    document.getElementById('map-panel').style.background =
+        `rgba(0,8,20,${(opVal / 100).toFixed(2)})`;
+    closeMapConfig();
+}
+
+// ── DRAW MAP FRAME ────────────────────────────────────────────────────────────
+function drawMapFrame() {
+    requestAnimationFrame(drawMapFrame);
+    const canvas = document.getElementById('map-canvas');
+    if (!canvas || !document.getElementById('map-panel') ||
+        document.getElementById('map-panel').style.display === 'none') return;
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
+
+    // Background
+    ctx.fillStyle = 'rgba(0,4,12,0.75)';
+    ctx.fillRect(0, 0, W, H);
+
+    // ── GRID ──
+    const step = gridConfig.squareSizeMeters;
+    const hx = Math.floor(gridConfig.squaresX / 2) * step;
+    const hy = Math.floor(gridConfig.squaresY / 2) * step;
+    ctx.strokeStyle = 'rgba(0,240,255,0.13)';
+    ctx.lineWidth = 0.8;
+    for (let xi = -hx; xi <= hx; xi += step) {
+        ctx.beginPath();
+        for (let j = 0; j <= 20; j++) {
+            const pt = projectMap(xi, -hy + (j / 20) * 2 * hy, 0);
+            j === 0 ? ctx.moveTo(pt.x, pt.y) : ctx.lineTo(pt.x, pt.y);
+        }
+        ctx.stroke();
+    }
+    for (let yi = -hy; yi <= hy; yi += step) {
+        ctx.beginPath();
+        for (let j = 0; j <= 20; j++) {
+            const pt = projectMap(-hx + (j / 20) * 2 * hx, yi, 0);
+            j === 0 ? ctx.moveTo(pt.x, pt.y) : ctx.lineTo(pt.x, pt.y);
+        }
+        ctx.stroke();
+    }
+
+    // ── MY ASSIGNED POSITION ──
+    const myPos = assignments[myCallsign] || { x: 0, y: 0, z: 0 };
+
+    // ── NEARBY RANGE RING ──
+    ctx.strokeStyle = 'rgba(255,221,0,0.18)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 5]);
+    ctx.beginPath();
+    for (let i = 0; i <= 48; i++) {
+        const a = (i / 48) * Math.PI * 2;
+        const pt = projectMap(
+            (myPos.x || 0) + Math.cos(a) * nearbyRange,
+            (myPos.y || 0) + Math.sin(a) * nearbyRange,
+            myPos.z || 0
+        );
+        i === 0 ? ctx.moveTo(pt.x, pt.y) : ctx.lineTo(pt.x, pt.y);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // ── BEZIER PATHS ──
+    if (pendingOrder.active && pendingOrder.paths) {
+        for (const [cs, pd] of Object.entries(pendingOrder.paths)) {
+            if (!pd || !pd.p0) continue;
+            const asgn = assignments[cs];
+            ctx.strokeStyle = ((asgn && asgn.color) || '#00f0ff') + '99';
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([4, 4]);
+            ctx.beginPath();
+            for (let i = 0; i <= 24; i++) {
+                const pt3 = bezierPoint3D(i / 24, pd.p0, pd.c1, pd.c2, pd.p1);
+                const pt  = projectMap(pt3.x, pt3.y, pt3.z);
+                i === 0 ? ctx.moveTo(pt.x, pt.y) : ctx.lineTo(pt.x, pt.y);
+            }
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+    }
+
+    // ── GHOST TARGETS ──
+    if (pendingOrder.active && pendingOrder.targets) {
+        for (const [cs, tgt] of Object.entries(pendingOrder.targets)) {
+            if (!tgt) continue;
+            const pt  = projectMap(tgt.x, tgt.y, tgt.z);
+            const col = (assignments[cs] && assignments[cs].color) || '#00f0ff';
+            const gr  = 5;
+            ctx.save();
+            ctx.globalAlpha = 0.45;
+            ctx.strokeStyle = col;
+            ctx.lineWidth = 1;
+            ctx.setLineDash([2, 3]);
+            ctx.beginPath();
+            ctx.moveTo(pt.x, pt.y - gr);
+            ctx.lineTo(pt.x + gr * 0.65, pt.y + gr * 0.6);
+            ctx.lineTo(pt.x - gr * 0.65, pt.y + gr * 0.6);
+            ctx.closePath();
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.restore();
+        }
+    }
+
+    // ── SHIPS ──
+    const now = Date.now();
+    for (const [cs, asgn] of Object.entries(assignments)) {
+        if (!asgn) continue;
+        const wx = asgn.x || 0, wy = asgn.y || 0, wz = asgn.z || 0;
+        const dx = wx - (myPos.x || 0), dy = wy - (myPos.y || 0), dz = wz - (myPos.z || 0);
+        const dist3 = Math.sqrt(dx*dx + dy*dy + dz*dz);
+        const isMe   = cs === myCallsign;
+        const inRange = isMe || dist3 <= nearbyRange;
+        const pt = projectMap(wx, wy, wz);
+        const col = asgn.color || '#00f0ff';
+        const r = 5;
+
+        ctx.save();
+        ctx.globalAlpha = inRange ? 1.0 : 0.22;
+
+        if (isMe && myOrderState === 'READY') {
+            ctx.shadowColor = '#00ff66'; ctx.shadowBlur = 14;
+        }
+        if (isMe && myOrderState === 'ACKNOWLEDGED') {
+            ctx.globalAlpha = (inRange ? 1.0 : 0.22) * (0.5 + 0.5 * Math.sin(now / 150));
+        }
+
+        ctx.strokeStyle = isMe ? '#ffffff' : col;
+        ctx.lineWidth   = isMe ? 1.8 : 1;
+        ctx.beginPath();
+        ctx.moveTo(pt.x, pt.y - r);
+        ctx.lineTo(pt.x + r * 0.65, pt.y + r * 0.7);
+        ctx.lineTo(pt.x - r * 0.65, pt.y + r * 0.7);
+        ctx.closePath();
+        ctx.stroke();
+
+        if (inRange) {
+            ctx.font = '7px Courier New';
+            ctx.fillStyle = isMe ? '#ffffff' : col;
+            ctx.globalAlpha *= 0.8;
+            ctx.fillText(cs, pt.x + r + 2, pt.y + 3);
+        }
+        ctx.restore();
+    }
+}
+
+// ── MAP PANEL EVENTS ──────────────────────────────────────────────────────────
+document.addEventListener('mousedown', (e) => {
+    const panel = document.getElementById('map-panel');
+    if (!panel || panel.style.display === 'none') return;
+    const resizeHandle = document.getElementById('map-resize-handle');
+    const titlebar     = document.getElementById('map-titlebar');
+    const canvas       = document.getElementById('map-canvas');
+
+    if (e.target === resizeHandle) {
+        e.preventDefault();
+        const rect = panel.getBoundingClientRect();
+        mapPanelResize = { startX: e.clientX, startY: e.clientY, origW: rect.width, origH: rect.height };
+        return;
+    }
+    if (titlebar && titlebar.contains(e.target) && e.target.tagName !== 'BUTTON') {
+        e.preventDefault();
+        const rect = panel.getBoundingClientRect();
+        mapPanelDrag = { startX: e.clientX, startY: e.clientY, origLeft: rect.left, origTop: rect.top };
+        panel.style.position = 'fixed';
+        panel.style.right  = 'auto';  panel.style.bottom = 'auto';
+        panel.style.left   = rect.left + 'px';
+        panel.style.top    = rect.top  + 'px';
+        return;
+    }
+    if (mapInteractive && canvas && canvas.contains(e.target)) {
+        mapCamDrag = true;
+        mapLastMouse = { x: e.clientX, y: e.clientY };
+    }
+});
+
+document.addEventListener('mousemove', (e) => {
+    if (mapPanelResize) {
+        const panel  = document.getElementById('map-panel');
+        const canvas = document.getElementById('map-canvas');
+        const newW = Math.max(180, mapPanelResize.origW + (e.clientX - mapPanelResize.startX));
+        const newH = Math.max(120, mapPanelResize.origH + (e.clientY - mapPanelResize.startY));
+        panel.style.width   = newW + 'px';
+        canvas.width        = newW - 10;
+        canvas.height       = Math.max(80, newH - 38);
+        canvas.style.width  = canvas.width  + 'px';
+        canvas.style.height = canvas.height + 'px';
+        return;
+    }
+    if (mapPanelDrag) {
+        const panel = document.getElementById('map-panel');
+        panel.style.left = (mapPanelDrag.origLeft + e.clientX - mapPanelDrag.startX) + 'px';
+        panel.style.top  = (mapPanelDrag.origTop  + e.clientY - mapPanelDrag.startY) + 'px';
+        return;
+    }
+    if (mapCamDrag) {
+        mapYaw   += (e.clientX - mapLastMouse.x) * 0.005;
+        mapPitch += (e.clientY - mapLastMouse.y) * 0.005;
+        mapPitch = Math.max(-1.4, Math.min(0.2, mapPitch));
+        mapLastMouse = { x: e.clientX, y: e.clientY };
+        throttleSendView();
+    }
+});
+
+document.addEventListener('mouseup', () => {
+    mapPanelDrag = null; mapPanelResize = null; mapCamDrag = false;
+});
+
+document.getElementById('map-canvas').addEventListener('wheel', (e) => {
+    if (!mapInteractive) return;
+    e.preventDefault();
+    mapZoom = Math.max(0.3, Math.min(4.0, mapZoom - e.deltaY * 0.001));
+    throttleSendView();
+}, { passive: false });
+
+function showHUD() {
+    document.getElementById('setup-screen').style.display = 'none';
+    const hud = document.getElementById('hud-container');
+    hud.style.display = 'block';
+    document.getElementById('hud-callsign-label').textContent = myCallsign;
+    document.getElementById('hud-ship-label').textContent = myShip;
+    document.getElementById('hud-dot').style.background = myColor;
+    setHudConnStatus('● CONNECTED', 'live');
+
+    // Show tactical map panel
+    document.getElementById('map-panel').style.display = 'block';
+
+    // Start render loop once (guarded so reconnects don't double-start it)
+    if (!_mapLoopStarted) {
+        _mapLoopStarted = true;
+        drawMapFrame();
+    }
+
+    // Wire hotkey handler from Electron main process
+    if (window.electronAPI && window.electronAPI.onHotkey) {
+        window.electronAPI.onHotkey(handleHotkey);
+    }
+
+    // HUD is live — pass all clicks through to the game underneath
+    if (window.electronAPI) window.electronAPI.setIgnoreMouse(true);
+}
+
+function hideHUD(reason) {
+    document.getElementById('hud-container').style.display = 'none';
+    document.getElementById('setup-screen').style.display = 'flex';
+    document.getElementById('connect-btn').disabled = false;
+    setStatus(reason || 'Disconnected', 'err');
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+
+    // Hide tactical map and order bar
+    document.getElementById('map-panel').style.display = 'none';
+    document.getElementById('order-state-bar').style.display = 'none';
+
+    // Reset order state
+    myOrderState = 'IDLE';
+    pendingOrder = { active: false, targets: {}, paths: {} };
+
+    // Exit interactive mode if active
+    if (mapInteractive) {
+        mapInteractive = false;
+        document.getElementById('map-panel').classList.remove('interactive');
+    }
+
+    // Setup screen needs full mouse interaction — disable click-through
+    if (window.electronAPI) window.electronAPI.setIgnoreMouse(false);
+}
+</script>
 </body>
 </html>
